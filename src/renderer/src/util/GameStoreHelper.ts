@@ -123,41 +123,50 @@ class GameStoreHelper {
     }
   }
 
-  public find = toBlue(async (query: IStoreQuery): Promise<IGameStoreEntry[]> => {
-    const results: IGameStoreEntry[] = [];
-    for (const storeId of Object.keys(query)) {
-      let prioOffset = 0;
-      for (const storeQuery of query[storeId]) {
-        let result: IGameStoreEntry | undefined = undefined;
-        try {
-          if (storeId === "registry") {
-            result = await this.registryLookup(storeQuery.id);
-          } else if (storeQuery.id !== undefined) {
-            result = await this.findGameEntry("id", storeQuery.id, storeId);
-          } else if (storeQuery.name !== undefined) {
-            result = await this.findGameEntry("name", storeQuery.name, storeId);
-          } else {
-            throw new Error("invalid store query, set either id or name");
+  public find = toBlue(
+    async (query: {
+      [storeId: string]: string | IStoreQuery | IStoreQuery[];
+    }): Promise<IGameStoreEntry[]> => {
+      const results: IGameStoreEntry[] = [];
+      for (const storeId of Object.keys(query)) {
+        const raw = query[storeId];
+        const storeQueries: IStoreQuery[] =
+          typeof raw === "string" ? [{ id: raw }] : Array.isArray(raw) ? raw : [raw];
+        let prioOffset = 0;
+        for (const storeQuery of storeQueries) {
+          let result: IGameStoreEntry | undefined = undefined;
+          try {
+            if (storeId === "registry") {
+              result = await this.registryLookup(storeQuery.id);
+            } else if (storeQuery.id !== undefined) {
+              result = await this.findGameEntry("id", storeQuery.id, storeId);
+            } else if (storeQuery.name !== undefined) {
+              result = await this.findGameEntry("name", storeQuery.name, storeId);
+            } else {
+              throw new Error("invalid store query, set either id or name");
+            }
+          } catch (err) {
+            if (!(err instanceof GameEntryNotFound)) {
+              log("error", "Failed to look up game", {
+                storeId,
+                appid: storeQuery.id,
+                name: storeQuery.name,
+              });
+            }
           }
-        } catch (err) {
-          if (!(err instanceof GameEntryNotFound)) {
-            log("error", "Failed to look up game", {
-              storeId,
-              appid: storeQuery.id,
-              name: storeQuery.name,
-            });
+          if (result) {
+            result.priority =
+              storeQuery.prefer ??
+              this.mStoresDict[result.gameStoreId]?.priority ??
+              defaultPriority;
+            result.priority += prioOffset++ / 1000;
+            results.push(result);
           }
-        }
-        if (result) {
-          result.priority =
-            storeQuery.prefer ?? this.mStoresDict[result.gameStoreId]?.priority ?? defaultPriority;
-          result.priority += prioOffset++ / 1000;
-          results.push(result);
         }
       }
-    }
-    return results;
-  });
+      return results;
+    },
+  );
 
   public findByName(name: string | string[], storeId?: string): Bluebird<IGameStoreEntry> {
     return this.validInput(name)
