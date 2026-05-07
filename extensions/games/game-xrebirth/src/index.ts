@@ -12,12 +12,12 @@ function testSupported(files: string[], gameId: string): Promise<types.ISupporte
   const contentPath = files.find((file) => path.basename(file) === "content.xml");
   return Promise.resolve({
     supported: contentPath !== undefined,
-    requiredFiles: [contentPath],
+    requiredFiles: contentPath !== undefined ? [contentPath] : [],
   });
 }
 
 async function install(files: string[], destinationPath: string): Promise<types.IInstallResult> {
-  const contentPath = files.find((file) => path.basename(file) === "content.xml");
+  const contentPath = files.find((file) => path.basename(file) === "content.xml")!;
   const basePath = path.dirname(contentPath);
 
   const data = await fs.readFileAsync(path.join(destinationPath, contentPath), {

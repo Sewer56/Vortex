@@ -15,6 +15,7 @@
     "game": "X Rebirth"
   },
   "devDependencies": {
+    "@types/xml2js": "catalog:",
     "vortex-api": "workspace:*"
   }
 }
