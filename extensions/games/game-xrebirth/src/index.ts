@@ -1,6 +1,6 @@
 import path from "path";
 
-import { fs, log, util } from "vortex-api";
+import { fs, util } from "vortex-api";
 import type { types } from "vortex-api";
 import { parseStringPromise } from "xml2js";
 
@@ -26,55 +26,34 @@ async function install(files: string[], destinationPath: string): Promise<types.
     encoding: "utf8",
   });
 
-  let parsed: any;
+  let parsed: Record<string, unknown>;
   try {
     parsed = await parseStringPromise(data);
   } catch (err) {
     throw new util.DataInvalid("content.xml invalid: " + err.message);
   }
 
-  const getAttr = (key: string): string | undefined => {
-    try {
-      return parsed?.content?.$?.[key];
-    } catch (err) {
-      log("info", "attribute missing in content.xml", { key });
-    }
-  };
+  const attrs = (parsed?.content as Record<string, unknown>)?.$ as
+    | Record<string, string>
+    | undefined;
 
-  const outputPath = getAttr("id");
+  const outputPath = attrs?.id;
   if (outputPath === undefined) {
     throw new util.DataInvalid("invalid or unsupported content.xml");
   }
 
-  const attrInstructions: types.IInstruction[] = [
-    {
-      type: "attribute",
-      key: "customFileName",
-      value: getAttr("name").trim(),
-    },
-    {
-      type: "attribute",
-      key: "description",
-      value: getAttr("description"),
-    },
-    {
-      type: "attribute",
-      key: "sticky",
-      value: getAttr("save") === "true",
-    },
-    // NOTE: original code has "trype" (typo), so this instruction has no recognized
-    // type and is silently ignored by the framework. Preserved for 1:1 behavior.
-    {
-      trype: "attribute",
-      key: "author",
-      value: getAttr("author"),
-    } as any,
-    {
-      type: "attribute",
-      key: "version",
-      value: getAttr("version"),
-    },
-  ];
+  const attrMap: Record<string, unknown> = {
+    customFileName: attrs?.name?.trim(),
+    description: attrs?.description,
+    sticky: attrs?.save === "true",
+    author: attrs?.author,
+    version: attrs?.version,
+  };
+  const attrInstructions: types.IInstruction[] = Object.entries(attrMap).map(([key, value]) => ({
+    type: "attribute" as const,
+    key,
+    value,
+  }));
 
   const copyInstructions: types.IInstruction[] = files
     .filter((file) => file.startsWith(basePath + path.sep) && !file.endsWith(path.sep))
