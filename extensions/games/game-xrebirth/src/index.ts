@@ -42,18 +42,13 @@ async function install(files: string[], destinationPath: string): Promise<types.
     throw new util.DataInvalid("invalid or unsupported content.xml");
   }
 
-  const attrMap: Record<string, unknown> = {
+  const attrInstructions: types.IInstruction[] = Object.entries({
     customFileName: attrs?.name?.trim(),
     description: attrs?.description,
     sticky: attrs?.save === "true",
     author: attrs?.author,
     version: attrs?.version,
-  };
-  const attrInstructions: types.IInstruction[] = Object.entries(attrMap).map(([key, value]) => ({
-    type: "attribute" as const,
-    key,
-    value,
-  }));
+  }).map(([key, value]) => ({ type: "attribute" as const, key, value }));
 
   const copyInstructions: types.IInstruction[] = files
     .filter((file) => file.startsWith(basePath + path.sep) && !file.endsWith(path.sep))
