@@ -432,6 +432,18 @@ class GameModeManager {
   }
 
   private storeGame = (game: IGame): IGameStored => {
+    const steamId = this.extractSteamId(game);
+
+    const environment = { ...game.environment };
+    if (steamId !== undefined && environment.SteamAPPId === undefined) {
+      environment.SteamAPPId = steamId;
+    }
+
+    const details = { ...game.details };
+    if (steamId !== undefined && details.steamAppId === undefined) {
+      details.steamAppId = +steamId;
+    }
+
     return {
       name: game.name,
       shortName: game.shortName,
@@ -443,13 +455,27 @@ class GameModeManager {
       supportedTools:
         game.supportedTools !== undefined ? game.supportedTools.map(this.storeTool) : [],
       executable: game.executable(),
-      environment: game.environment,
-      details: game.details,
+      environment,
+      details,
       shell: game.shell,
       contributed: game.contributed,
       final: game.final,
     };
   };
+
+  private extractSteamId(game: IGame): string | undefined {
+    const steamEntry = game.queryArgs?.steam;
+    if (steamEntry === undefined) {
+      return undefined;
+    }
+    if (typeof steamEntry === "string") {
+      return steamEntry;
+    }
+    if (Array.isArray(steamEntry)) {
+      return steamEntry[0]?.id;
+    }
+    return steamEntry.id;
+  }
 
   private storeTool(tool: ITool): IToolStored {
     const SKIPPED_TOOL_ATTRIBUTES = [

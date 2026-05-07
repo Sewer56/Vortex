@@ -4,8 +4,6 @@ import { fs, util } from "vortex-api";
 import type { types } from "vortex-api";
 import { parseStringPromise } from "xml2js";
 
-const STEAM_ID = "2870";
-
 function testSupported(files: string[], gameId: string): Promise<types.ISupportedResult> {
   if (gameId !== "xrebirth") {
     return Promise.resolve({ supported: false, requiredFiles: [] });
@@ -65,20 +63,11 @@ function main(context: types.IExtensionContext): boolean {
   context.registerGame({
     id: "xrebirth",
     name: "X Rebirth",
-    mergeMods: true,
-    queryArgs: {
-      steam: [{ id: STEAM_ID }],
-    },
+    queryArgs: { steam: "2870" },
     queryModPath: () => "extensions",
     logo: "gameart.webp",
     executable: () => "XRebirth.exe",
     requiredFiles: ["XRebirth.exe"],
-    environment: {
-      SteamAPPId: STEAM_ID,
-    },
-    details: {
-      steamAppId: +STEAM_ID,
-    },
   });
 
   context.registerInstaller("xrebirth", 50, testSupported, install);
