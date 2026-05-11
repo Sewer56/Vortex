@@ -40,18 +40,14 @@ export async function generateTests(opts: IRunnerOptions): Promise<void> {
       for (const fx of fixtures) {
         const label = `${labelOrigin(fx.origin)} › modId=${fx.modId} fileId=${fx.fileId}`;
         test(label, async () => {
-          let manifest: string[];
-          try {
-            manifest = await client.getFileManifest(
-              ext.testDescriptor.nexusGameDomain,
-              fx.modId,
-              fx.fileId,
-            );
-          } catch (err: any) {
-            // getFileManifest may not be supported by the underlying API yet.
-            // Skip manifest-dependent assertions; testSupported still gets [].
-            manifest = [];
-          }
+          // Let manifest failures propagate — a missing manifest invalidates
+          // every downstream assertion, so we want loud failures, not silent
+          // rejections.
+          const manifest = await client.getFileManifest(
+            ext.testDescriptor.nexusGameDomain,
+            fx.modId,
+            fx.fileId,
+          );
           const outcome = await runFixture(ext, fx, manifest);
           if (outcome.kind === "failed") {
             expect.fail(outcome.issues.join("; "));
