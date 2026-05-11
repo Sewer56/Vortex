@@ -16,9 +16,21 @@ export const XREBIRTH_STOP_PATTERNS: string[] = [
   // Game language data dropped at root.
   "(^|/)lang\\.dat$",
   // Standard X Rebirth mod subfolders containing .xml content.
-  "(^|/)assets/.+\\.xml$",
+  "(^|/)assets/.+",
   "(^|/)libraries/.+\\.xml$",
   "(^|/)maps/.+\\.xml$",
   "(^|/)md/.+\\.xml$",
   "(^|/)cinematics/.+",
+  // AI script overrides.
+  "(^|/)aiscripts/.+\\.xml$",
+  // Voice/audio packs (folders typically named voice-L0NN/).
+  "(^|/)voice-[^/]+/.+\\.(ogg|wav)$",
+  // UI presentation content.
+  "(^|/)ui/.+",
+  // SFX / pre-baked audio dropped at root.
+  "(^|/)sfx/.+",
+  // Cursor replacements.
+  "[^/]*\\.cur$",
+  // Audio replacements (numbered .ogg files, music .mp3, voice .wav).
+  "[^/]*\\.(ogg|mp3|wav)$",
 ];

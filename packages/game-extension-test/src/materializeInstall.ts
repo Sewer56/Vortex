@@ -24,6 +24,8 @@ export function materializeInstall(
       files.push(inst.destination);
     } else if (inst.type === "attribute" && inst.key !== undefined) {
       attributes[inst.key] = inst.value;
+    } else if (inst.type === "setmodtype") {
+      attributes.modType = inst.value;
     }
     // generatefile, mkdir, etc. are ignored for now — extend as needed.
   }

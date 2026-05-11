@@ -57,6 +57,9 @@ export const healthCheck: IModHealthCheck = {
     const hasContentXml = mod.files.some((f) => path.basename(f).toLowerCase() === "content.xml");
     const stopPatternRegexes = XREBIRTH_STOP_PATTERNS.map((p) => new RegExp(p, "i"));
     const matchesStopPattern = mod.files.some((f) => stopPatternRegexes.some((re) => re.test(f)));
+    const modType = mod.attributes.modType as string | undefined;
+    const taggedNonContentXml =
+      modType === "xrebirth-savegame" || modType === "xrebirth-shader-injector";
 
     if (hasContentXml) {
       // content.xml mod: also require the customFileName attribute, since that's
@@ -64,12 +67,12 @@ export const healthCheck: IModHealthCheck = {
       if (mod.attributes.customFileName === undefined) {
         issues.push("content.xml mod missing customFileName attribute");
       }
-    } else if (!matchesStopPattern) {
-      // Neither a content.xml mod nor a drop-in: the install output doesn't
-      // look like anything X Rebirth knows how to consume.
+    } else if (!matchesStopPattern && !taggedNonContentXml) {
+      // Not a content.xml mod, not matching any stop pattern, and not tagged
+      // as a known non-content-xml shape (savegame/shader). Reject.
       issues.push(
-        "install output has no content.xml and no stop-pattern matches " +
-          "(not a recognisable X Rebirth mod shape)",
+        "install output has no content.xml, no stop-pattern matches, " +
+          "and no recognised modType (not a recognisable X Rebirth mod shape)",
       );
     }
 

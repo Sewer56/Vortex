@@ -6,6 +6,8 @@ import { parseStringPromise } from "xml2js";
 
 import { healthCheck } from "./diagnostic";
 import { installDropIn, testDropIn } from "./installers/dropInInstaller";
+import { installSavegame, testSavegame } from "./installers/savegameInstaller";
+import { installSweetFx, testSweetFx } from "./installers/sweetFxInstaller";
 import { XREBIRTH_STOP_PATTERNS } from "./stopPatterns";
 
 function testSupported(files: string[], gameId: string): Promise<types.ISupportedResult> {
@@ -76,6 +78,10 @@ function main(context: types.IExtensionContext): boolean {
   });
 
   context.registerInstaller("xrebirth", 50, testSupported, install);
+  // Distinct-shape installers ahead of the generic drop-in: each tags a
+  // modType so a future registerModType call can route deployment.
+  context.registerInstaller("xrebirth-savegame", 60, testSavegame, installSavegame);
+  context.registerInstaller("xrebirth-shader-injector", 65, testSweetFx, installSweetFx);
   context.registerInstaller("xrebirth-dropin", 75, testDropIn, installDropIn);
 
   (context as any).registerHealthCheck?.(healthCheck);
