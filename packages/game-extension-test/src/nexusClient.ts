@@ -5,6 +5,12 @@ export interface INexusClient {
   listMostPopular(gameDomain: string, limit: number): Promise<INexusModSummary[]>;
   listMostRecent(gameDomain: string, limit: number): Promise<INexusModSummary[]>;
   listOldest(gameDomain: string, limit: number): Promise<INexusModSummary[]>;
+  /**
+   * Enumerate every mod for the game via paginated GraphQL.
+   * Returns one row per mod. Caller is responsible for the per-mod `listModFiles`
+   * follow-up.
+   */
+  listAllMods(gameDomain: string): Promise<INexusModSummary[]>;
   listCollections(gameDomain: string): Promise<INexusCollectionSummary[]>;
   listCollectionMods(gameDomain: string, collectionSlug: string): Promise<INexusModSummary[]>;
   listModFiles(gameDomain: string, modId: number): Promise<INexusFileSummary[]>;
@@ -146,6 +152,52 @@ export function createNexusClient(apiKey: string): INexusClient {
         .reverse()
         .slice(0, limit)
         .map((m) => ({ modId: m.mod_id, name: m.name ?? "" }));
+    },
+
+    // ------------------------------------------------------------------
+    // listAllMods – paginated GraphQL `mods(filter: gameDomainName)` query.
+    // Returns every mod for the game.
+    // ------------------------------------------------------------------
+    async listAllMods(gameDomain: string): Promise<INexusModSummary[]> {
+      const pageSize = 100;
+      const out: INexusModSummary[] = [];
+      let offset = 0;
+      // The SDK doesn't expose a raw GraphQL request method on the typed
+      // surface, so we use the apikey header directly against /v2/graphql.
+      while (true) {
+        await limiter.removeTokens(1);
+        const resp = await fetch("https://api.nexusmods.com/v2/graphql", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            APIKEY: apiKey,
+          },
+          body: JSON.stringify({
+            query:
+              "query($domain: String!, $count: Int!, $offset: Int!) {" +
+              " mods(filter: { filter: [{ gameDomainName: { value: $domain, op: EQUALS } }] }, count: $count, offset: $offset) {" +
+              "   totalCount nodes { modId name }" +
+              " } }",
+            variables: { domain: gameDomain, count: pageSize, offset },
+          }),
+        });
+        if (!resp.ok) {
+          throw new Error(`listAllMods: HTTP ${resp.status}`);
+        }
+        const data = (await resp.json()) as {
+          data?: { mods?: { totalCount?: number; nodes?: Array<{ modId: number; name: string }> } };
+          errors?: Array<{ message: string }>;
+        };
+        if (data.errors?.length) {
+          throw new Error(`listAllMods GraphQL: ${data.errors.map((e) => e.message).join("; ")}`);
+        }
+        const page = data.data?.mods?.nodes ?? [];
+        for (const m of page) out.push({ modId: m.modId, name: m.name ?? "" });
+        const total = data.data?.mods?.totalCount ?? 0;
+        offset += page.length;
+        if (offset >= total || page.length === 0) break;
+      }
+      return out;
     },
 
     // ------------------------------------------------------------------

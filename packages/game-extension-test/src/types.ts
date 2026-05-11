@@ -13,6 +13,12 @@ export interface IGameExtensionTestDescriptor {
     mostRecent: number;
     oldest: number;
     allCollections: boolean;
+    /**
+     * When true, fetch *every* mod for the game via paginated GraphQL.
+     * For small games this is fine; for large games (Skyrim, etc.) it
+     * generates a lot of API traffic.
+     */
+    all: boolean;
   };
 
   /**

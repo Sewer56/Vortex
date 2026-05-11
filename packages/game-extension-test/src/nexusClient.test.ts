@@ -145,6 +145,55 @@ describe("nexusClient", () => {
   });
 
   // -------------------------------------------------------------------------
+  // listAllMods – paginated GraphQL fetch.
+  // -------------------------------------------------------------------------
+
+  test("listAllMods paginates until totalCount reached", async () => {
+    let call = 0;
+    const fetchMock = vi.fn().mockImplementation(() => {
+      call += 1;
+      const body =
+        call === 1
+          ? {
+              data: {
+                mods: {
+                  totalCount: 3,
+                  nodes: [
+                    { modId: 1, name: "A" },
+                    { modId: 2, name: "B" },
+                  ],
+                },
+              },
+            }
+          : { data: { mods: { totalCount: 3, nodes: [{ modId: 3, name: "C" }] } } };
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body) });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const mods = await client.listAllMods("xrebirth");
+    expect(mods).toEqual([
+      { modId: 1, name: "A" },
+      { modId: 2, name: "B" },
+      { modId: 3, name: "C" },
+    ]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    vi.unstubAllGlobals();
+  });
+
+  test("listAllMods surfaces GraphQL errors", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ errors: [{ message: "boom" }] }),
+      }),
+    );
+    await expect(client.listAllMods("xrebirth")).rejects.toThrow(/boom/);
+    vi.unstubAllGlobals();
+  });
+
+  // -------------------------------------------------------------------------
   // getFileManifest – fetches preview JSON and flattens into file paths.
   // -------------------------------------------------------------------------
 

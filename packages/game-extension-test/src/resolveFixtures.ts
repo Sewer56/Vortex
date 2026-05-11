@@ -51,6 +51,9 @@ export async function resolveFixtures(
   };
 
   const d = descriptor.nexusGameDomain;
+  if (descriptor.fixtures.all) {
+    await collect("mostPopular", await client.listAllMods(d), d);
+  }
   if (descriptor.fixtures.mostPopular > 0) {
     await collect(
       "mostPopular",

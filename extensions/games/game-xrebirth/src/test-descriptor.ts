@@ -10,10 +10,11 @@ export const testDescriptor = {
   gameId: "xrebirth",
   nexusGameDomain: "xrebirth",
   fixtures: {
-    mostPopular: 20,
-    mostRecent: 10,
-    oldest: 5,
-    allCollections: true,
+    mostPopular: 0,
+    mostRecent: 0,
+    oldest: 0,
+    allCollections: false,
+    all: true,
   } as const,
   syntheticContent: {
     "content.xml": ({ manifestId }: { manifestId: string }) =>

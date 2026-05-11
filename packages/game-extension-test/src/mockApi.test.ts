@@ -8,7 +8,7 @@ describe("mockApi", () => {
     const descriptor = {
       gameId: "fake",
       nexusGameDomain: "fake",
-      fixtures: { mostPopular: 0, mostRecent: 0, oldest: 0, allCollections: false },
+      fixtures: { mostPopular: 0, mostRecent: 0, oldest: 0, allCollections: false, all: false },
       syntheticContent: {
         "content.xml": () => '<content id="foo"/>',
       },
@@ -23,7 +23,7 @@ describe("mockApi", () => {
     const descriptor = {
       gameId: "fake",
       nexusGameDomain: "fake",
-      fixtures: { mostPopular: 0, mostRecent: 0, oldest: 0, allCollections: false },
+      fixtures: { mostPopular: 0, mostRecent: 0, oldest: 0, allCollections: false, all: false },
       syntheticContent: {},
     };
     buildMockApi(descriptor, [], { manifestId: "m-1", modId: 1, fileId: 1 });
@@ -36,7 +36,7 @@ describe("mockApi", () => {
     const descriptor = {
       gameId: "fake",
       nexusGameDomain: "fake",
-      fixtures: { mostPopular: 0, mostRecent: 0, oldest: 0, allCollections: false },
+      fixtures: { mostPopular: 0, mostRecent: 0, oldest: 0, allCollections: false, all: false },
       syntheticContent: {
         "content.xml": () => "<content/>",
       },
