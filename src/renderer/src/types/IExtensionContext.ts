@@ -1185,6 +1185,19 @@ export interface IExtensionContext {
   registerTest: (id: string, event: string, check: CheckFunction) => void;
 
   /**
+   * register a health check. Pass an IHealthCheck for whole-game checks, or
+   * an IModHealthCheck for per-mod checks (the registry iterates mods and
+   * aggregates per-mod results).
+   *
+   * Prefer this over the legacy `registerTest` for new code.
+   *
+   * @memberOf IExtensionContext
+   */
+  registerHealthCheck: (
+    healthCheck: import("./IHealthCheck").IHealthCheck | import("./IHealthCheck").IModHealthCheck,
+  ) => void;
+
+  /**
    * register a handler for archive types so the content of such archives is exposed to
    * the application (especially other extensions)
    *
