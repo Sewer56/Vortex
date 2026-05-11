@@ -5,6 +5,8 @@ import type { types } from "vortex-api";
 import { parseStringPromise } from "xml2js";
 
 import { healthCheck } from "./diagnostic";
+import { installDropIn, testDropIn } from "./installers/dropInInstaller";
+import { XREBIRTH_STOP_PATTERNS } from "./stopPatterns";
 
 function testSupported(files: string[], gameId: string): Promise<types.ISupportedResult> {
   if (gameId !== "xrebirth") {
@@ -70,9 +72,11 @@ function main(context: types.IExtensionContext): boolean {
     logo: "gameart.webp",
     executable: () => "XRebirth.exe",
     requiredFiles: ["XRebirth.exe"],
+    details: { stopPatterns: XREBIRTH_STOP_PATTERNS },
   });
 
   context.registerInstaller("xrebirth", 50, testSupported, install);
+  context.registerInstaller("xrebirth-dropin", 75, testDropIn, installDropIn);
 
   (context as any).registerHealthCheck?.(healthCheck);
 

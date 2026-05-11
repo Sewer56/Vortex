@@ -1,5 +1,7 @@
 import * as path from "node:path";
 
+import { XREBIRTH_STOP_PATTERNS } from "./stopPatterns";
+
 /**
  * Minimal mirror of the framework's IModHealthCheck shape, kept local to avoid
  * dragging the renderer source tree into this extension's typecheck. The
@@ -48,17 +50,27 @@ export const healthCheck: IModHealthCheck = {
     const startedAt = Date.now();
     const issues: string[] = [];
 
-    const hasContentXml = mod.files.some((f) => path.basename(f).toLowerCase() === "content.xml");
-    if (!hasContentXml) {
-      issues.push("missing content.xml after install");
-    }
-
     if (mod.files.length === 0) {
       issues.push("installer produced no files");
     }
 
-    if (mod.attributes.customFileName === undefined) {
-      issues.push("customFileName attribute not set");
+    const hasContentXml = mod.files.some((f) => path.basename(f).toLowerCase() === "content.xml");
+    const stopPatternRegexes = XREBIRTH_STOP_PATTERNS.map((p) => new RegExp(p, "i"));
+    const matchesStopPattern = mod.files.some((f) => stopPatternRegexes.some((re) => re.test(f)));
+
+    if (hasContentXml) {
+      // content.xml mod: also require the customFileName attribute, since that's
+      // what the content.xml installer always sets.
+      if (mod.attributes.customFileName === undefined) {
+        issues.push("content.xml mod missing customFileName attribute");
+      }
+    } else if (!matchesStopPattern) {
+      // Neither a content.xml mod nor a drop-in: the install output doesn't
+      // look like anything X Rebirth knows how to consume.
+      issues.push(
+        "install output has no content.xml and no stop-pattern matches " +
+          "(not a recognisable X Rebirth mod shape)",
+      );
     }
 
     const severity: Severity = issues.length === 0 ? "info" : "warning";

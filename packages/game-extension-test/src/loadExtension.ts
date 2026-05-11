@@ -1,19 +1,23 @@
 import * as path from "node:path";
 
+export interface IInstallerEntry {
+  id: string;
+  priority: number;
+  testSupported: (...args: any[]) => Promise<any>;
+  install: (...args: any[]) => Promise<any>;
+}
+
 /**
- * Result of loading an extension: the installer functions registered via
- * context.registerInstaller, plus the diagnostic and test descriptor.
+ * Result of loading an extension. `installers` is sorted by ascending priority
+ * to mirror Vortex's `InstallManager.getInstaller` dispatch order (lower
+ * priority number wins).
  */
 export interface ILoadedExtension {
-  installer: {
-    id: string;
-    priority: number;
-    testSupported: (...args: any[]) => Promise<any>;
-    install: (...args: any[]) => Promise<any>;
-  };
+  installers: IInstallerEntry[];
   testDescriptor: any; // narrowed to IGameExtensionTestDescriptor at call sites
   healthCheck?: any; // optional IModHealthCheck
   gameId: string;
+  game: any; // the IGame-shaped object passed to context.registerGame
 }
 
 export async function loadExtension(extensionDir: string): Promise<ILoadedExtension> {
@@ -26,7 +30,7 @@ export async function loadExtension(extensionDir: string): Promise<ILoadedExtens
   }
   init(stubContext);
 
-  if (!stubContext._installer) {
+  if (stubContext._installers.length === 0) {
     throw new Error(`Extension ${extensionDir} did not call registerInstaller`);
   }
   if (!stubContext._game) {
@@ -46,23 +50,28 @@ export async function loadExtension(extensionDir: string): Promise<ILoadedExtens
     );
   }
 
+  const installers: IInstallerEntry[] = [...stubContext._installers].sort(
+    (a, b) => a.priority - b.priority,
+  );
+
   return {
-    installer: stubContext._installer,
+    installers,
     testDescriptor: descriptorMod.testDescriptor,
     healthCheck: diagnosticMod.healthCheck,
     gameId: stubContext._game.id,
+    game: stubContext._game,
   };
 }
 
 function makeStubContext(): any {
   const ctx: any = {
-    _installer: undefined,
+    _installers: [] as IInstallerEntry[],
     _game: undefined,
     registerGame(game: any) {
       ctx._game = game;
     },
     registerInstaller(id: string, priority: number, testSupported: any, install: any) {
-      ctx._installer = { id, priority, testSupported, install };
+      ctx._installers.push({ id, priority, testSupported, install });
     },
     registerTest() {
       /* legacy noop */

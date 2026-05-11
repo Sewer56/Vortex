@@ -18,19 +18,28 @@ export async function runFixture(
   };
   const { api } = buildMockApi(descriptor, manifest, ctx);
 
-  let supported: { supported: boolean; requiredFiles: string[] };
-  try {
-    supported = await ext.installer.testSupported(manifest, ext.gameId);
-  } catch (err: any) {
-    return { kind: "failed", issues: [`testSupported threw: ${err.message}`] };
+  // Walk installers in ascending priority order (mirrors Vortex's
+  // InstallManager.getInstaller dispatch). First one returning supported=true wins.
+  let chosen: (typeof ext.installers)[number] | undefined;
+  for (const inst of ext.installers) {
+    let supported: { supported: boolean; requiredFiles: string[] };
+    try {
+      supported = await inst.testSupported(manifest, ext.gameId);
+    } catch (err: any) {
+      return { kind: "failed", issues: [`testSupported (${inst.id}) threw: ${err.message}`] };
+    }
+    if (supported.supported) {
+      chosen = inst;
+      break;
+    }
   }
-  if (!supported.supported) {
-    return { kind: "rejected", reason: "installer returned supported=false" };
+  if (!chosen) {
+    return { kind: "rejected", reason: "no installer accepted the file" };
   }
 
   let result: { instructions: any[] };
   try {
-    result = await ext.installer.install(
+    result = await chosen.install(
       manifest,
       VIRTUAL_DEST,
       ext.gameId,
@@ -43,7 +52,7 @@ export async function runFixture(
       {},
     );
   } catch (err: any) {
-    return { kind: "failed", issues: [`install threw: ${err.message}`] };
+    return { kind: "failed", issues: [`install (${chosen.id}) threw: ${err.message}`] };
   }
 
   const modCtx = materializeInstall(ctx.manifestId, result.instructions, async (basename) => {

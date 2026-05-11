@@ -21,8 +21,10 @@ describe("runFixture", () => {
   test("rejected by testSupported returns kind=rejected", async () => {
     // Load a synthetic extension whose installer rejects.
     const ext = await loadExtension(FIXTURE_DIR);
-    // Override the installer.testSupported to always return supported=false.
-    ext.installer.testSupported = async () => ({ supported: false, requiredFiles: [] });
+    // Override every installer's testSupported to always return supported=false.
+    for (const inst of ext.installers) {
+      inst.testSupported = async () => ({ supported: false, requiredFiles: [] });
+    }
     const result = await runFixture(
       ext,
       { origin: "mostPopular", modId: 2, fileId: 2, fileName: "x.zip", contentPreviewLink: "" },
@@ -33,7 +35,7 @@ describe("runFixture", () => {
 
   test("install throw produces kind=failed", async () => {
     const ext = await loadExtension(FIXTURE_DIR);
-    ext.installer.install = async () => {
+    ext.installers[0]!.install = async () => {
       throw new Error("boom");
     };
     const result = await runFixture(
