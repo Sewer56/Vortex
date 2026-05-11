@@ -69,7 +69,7 @@ export interface ILegacyTestAdapter extends IHealthCheck {
 }
 
 export interface IHealthCheckEntry {
-  healthCheck: IHealthCheck | ILegacyTestAdapter;
+  healthCheck: IHealthCheck | IModHealthCheck | ILegacyTestAdapter;
   lastResult?: IHealthCheckResult;
   lastExecuted?: Date;
   enabled: boolean;
@@ -109,7 +109,7 @@ export interface IModHealthCheck extends Omit<IHealthCheck, "check" | "fix"> {
  * Type guard distinguishing the per-mod variant from a normal IHealthCheck.
  */
 export function isModHealthCheck(
-  hc: IHealthCheck | IModHealthCheck,
+  hc: IHealthCheck | IModHealthCheck | ILegacyTestAdapter,
 ): hc is IModHealthCheck {
   return typeof (hc as IModHealthCheck).checkMod === "function";
 }
