@@ -4,6 +4,8 @@ import { fs, util } from "vortex-api";
 import type { types } from "vortex-api";
 import { parseStringPromise } from "xml2js";
 
+import { healthCheck } from "./diagnostic";
+
 function testSupported(files: string[], gameId: string): Promise<types.ISupportedResult> {
   if (gameId !== "xrebirth") {
     return Promise.resolve({ supported: false, requiredFiles: [] });
@@ -71,6 +73,8 @@ function main(context: types.IExtensionContext): boolean {
   });
 
   context.registerInstaller("xrebirth", 50, testSupported, install);
+
+  (context as any).registerHealthCheck?.(healthCheck);
 
   return true;
 }
