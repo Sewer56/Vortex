@@ -9,20 +9,12 @@ export interface INexusClient {
   listCollectionMods(gameDomain: string, collectionSlug: string): Promise<INexusModSummary[]>;
   listModFiles(gameDomain: string, modId: number): Promise<INexusFileSummary[]>;
   /**
-   * Returns the list of file paths inside an archive (content preview / manifest).
-   *
-   * NOTE: @nexusmods/nexus-api v1.6.0 does not expose an archive content-preview
-   * endpoint directly (the REST endpoint exists at https://api.nexusmods.com but is
-   * not wrapped in this SDK). The `modFileContents` GraphQL method searches indexed
-   * file records but requires a pre-built query object and cannot enumerate arbitrary
-   * archive contents on demand.
-   *
-   * This method therefore always throws. The harness must either:
-   *   1. Make a direct HTTPS call to the content-preview URL stored in
-   *      `IFileInfo.content_preview_link` (returned by `getFileInfo`/`getModFiles`), or
-   *   2. Skip manifest-dependent fixtures gracefully.
+   * Fetch the content-preview JSON for a file and flatten it into the list of
+   * file paths inside the archive. The URL comes from
+   * `IFileInfo.content_preview_link` (exposed on `INexusFileSummary`).
+   * Throws if the URL is empty or the fetch fails.
    */
-  getFileManifest(gameDomain: string, modId: number, fileId: number): Promise<string[]>;
+  getFileManifest(contentPreviewLink: string): Promise<string[]>;
 }
 
 export interface INexusModSummary {
@@ -39,11 +31,31 @@ export interface INexusFileSummary {
   fileId: number;
   name: string;
   uploadedAt: Date;
+  /** URL of the archive content-preview JSON; empty string if not provided. */
+  contentPreviewLink: string;
 }
 
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
+
+interface IPreviewNode {
+  path?: string;
+  name?: string;
+  type?: "directory" | "file";
+  size?: string;
+  children?: IPreviewNode[];
+}
+
+function collectFiles(node: IPreviewNode, out: string[]): void {
+  if (node.type === "file" && typeof node.path === "string") {
+    out.push(node.path);
+    return;
+  }
+  if (node.children) {
+    for (const child of node.children) collectFiles(child, out);
+  }
+}
 
 /** Pause for `ms` milliseconds. */
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
@@ -197,19 +209,28 @@ export function createNexusClient(apiKey: string): INexusClient {
         fileId: f.file_id,
         name: f.name,
         uploadedAt: new Date(f.uploaded_timestamp * 1000),
+        contentPreviewLink: f.content_preview_link ?? "",
       }));
     },
 
     // ------------------------------------------------------------------
-    // getFileManifest – NOT available in @nexusmods/nexus-api v1.6.0
+    // getFileManifest – fetches IFileInfo.content_preview_link and flattens
+    // the tree into a list of file paths.
     // ------------------------------------------------------------------
-    getFileManifest: (_gameDomain: string, _modId: number, _fileId: number): Promise<string[]> => {
-      throw new Error(
-        "getFileManifest is not implemented: @nexusmods/nexus-api does not expose " +
-          "an archive content-preview endpoint. The harness must either fall back " +
-          "to a direct HTTPS call (see content-preview API at https://api.nexusmods.com) " +
-          "or skip manifest-dependent fixtures.",
-      );
+    getFileManifest: async (contentPreviewLink: string): Promise<string[]> => {
+      if (!contentPreviewLink) {
+        throw new Error("getFileManifest: empty content_preview_link");
+      }
+      const url = encodeURI(contentPreviewLink);
+      await limiter.removeTokens(1);
+      const resp = await fetch(url);
+      if (!resp.ok) {
+        throw new Error(`getFileManifest: ${url} returned HTTP ${resp.status}`);
+      }
+      const tree = (await resp.json()) as IPreviewNode;
+      const out: string[] = [];
+      collectFiles(tree, out);
+      return out;
     },
   };
 }

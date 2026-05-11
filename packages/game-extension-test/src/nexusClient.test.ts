@@ -29,7 +29,14 @@ const fakeNexus = {
   ),
   getModFiles: vi.fn((_modId: number, _g: string) =>
     Promise.resolve({
-      files: [{ file_id: 5, name: "v1.zip", uploaded_timestamp: 0 }],
+      files: [
+        {
+          file_id: 5,
+          name: "v1.zip",
+          uploaded_timestamp: 0,
+          content_preview_link: "https://example.test/file.json",
+        },
+      ],
     }),
   ),
 };
@@ -129,19 +136,64 @@ describe("nexusClient", () => {
   test("listModFiles maps file_id → fileId, name, uploaded_timestamp → uploadedAt Date", async () => {
     const files = await client.listModFiles("xrebirth", 1);
     expect(files).toHaveLength(1);
-    expect(files[0]).toMatchObject({ fileId: 5, name: "v1.zip" });
-    // uploaded_timestamp: 0 → new Date(0)
+    expect(files[0]).toMatchObject({
+      fileId: 5,
+      name: "v1.zip",
+      contentPreviewLink: "https://example.test/file.json",
+    });
     expect(files[0]?.uploadedAt).toEqual(new Date(0));
   });
 
   // -------------------------------------------------------------------------
-  // getFileManifest – synchronously throws (no archive content-preview SDK
-  // support in @nexusmods/nexus-api v1.6.0).
+  // getFileManifest – fetches preview JSON and flattens into file paths.
   // -------------------------------------------------------------------------
 
-  test("getFileManifest throws synchronously with a clear message", () => {
-    expect(() => client.getFileManifest("xrebirth", 1, 5)).toThrow(
-      /not implemented|content-preview/i,
+  test("getFileManifest flattens preview tree to file paths", async () => {
+    const tree = {
+      children: [
+        {
+          path: "Mod",
+          name: "Mod",
+          type: "directory",
+          children: [
+            { path: "Mod/content.xml", name: "content.xml", type: "file", size: "1 kB" },
+            {
+              path: "Mod/sub",
+              name: "sub",
+              type: "directory",
+              children: [
+                { path: "Mod/sub/data.bin", name: "data.bin", type: "file", size: "2 kB" },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(tree),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const paths = await client.getFileManifest("https://example.test/file.json");
+    expect(paths).toEqual(["Mod/content.xml", "Mod/sub/data.bin"]);
+    expect(fetchMock).toHaveBeenCalledWith("https://example.test/file.json");
+    vi.unstubAllGlobals();
+  });
+
+  test("getFileManifest throws on empty link", async () => {
+    await expect(client.getFileManifest("")).rejects.toThrow(/empty/i);
+  });
+
+  test("getFileManifest throws on non-2xx response", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({ ok: false, status: 404, json: () => Promise.resolve({}) }),
     );
+    await expect(client.getFileManifest("https://example.test/missing.json")).rejects.toThrow(
+      /HTTP 404/,
+    );
+    vi.unstubAllGlobals();
   });
 });

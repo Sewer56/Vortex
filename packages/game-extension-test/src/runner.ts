@@ -43,11 +43,7 @@ export async function generateTests(opts: IRunnerOptions): Promise<void> {
           // Let manifest failures propagate — a missing manifest invalidates
           // every downstream assertion, so we want loud failures, not silent
           // rejections.
-          const manifest = await client.getFileManifest(
-            ext.testDescriptor.nexusGameDomain,
-            fx.modId,
-            fx.fileId,
-          );
+          const manifest = await client.getFileManifest(fx.contentPreviewLink);
           const outcome = await runFixture(ext, fx, manifest);
           if (outcome.kind === "failed") {
             expect.fail(outcome.issues.join("; "));

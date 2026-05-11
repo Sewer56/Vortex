@@ -38,6 +38,8 @@ export interface IFixture {
   modId: number;
   fileId: number;
   fileName: string;
+  /** URL of the file's content-preview JSON (manifest endpoint). */
+  contentPreviewLink: string;
   /** File-tree manifest (paths relative to archive root). Lazy-fetched. */
   manifest?: string[];
 }

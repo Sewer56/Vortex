@@ -40,7 +40,13 @@ export async function resolveFixtures(
       }
       const latest = files.sort((a, b) => b.uploadedAt.getTime() - a.uploadedAt.getTime())[0];
       if (!latest) continue;
-      tryAdd({ origin, modId: m.modId, fileId: latest.fileId, fileName: latest.name });
+      tryAdd({
+        origin,
+        modId: m.modId,
+        fileId: latest.fileId,
+        fileName: latest.name,
+        contentPreviewLink: latest.contentPreviewLink,
+      });
     }
   };
 
@@ -59,7 +65,7 @@ export async function resolveFixtures(
     await collect("oldest", await client.listOldest(d, descriptor.fixtures.oldest), d);
   }
   if (descriptor.fixtures.allCollections) {
-    let cols;
+    let cols: Awaited<ReturnType<INexusClient["listCollections"]>>;
     try {
       cols = await client.listCollections(d);
     } catch (err: unknown) {

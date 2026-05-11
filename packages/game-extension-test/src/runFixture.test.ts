@@ -12,7 +12,7 @@ describe("runFixture", () => {
     const ext = await loadExtension(FIXTURE_DIR);
     const result = await runFixture(
       ext,
-      { origin: "mostPopular", modId: 1, fileId: 1, fileName: "file.zip" },
+      { origin: "mostPopular", modId: 1, fileId: 1, fileName: "file.zip", contentPreviewLink: "" },
       ["readme.txt", "data/textures.dat"],
     );
     expect(result.kind).toBe("passed");
@@ -25,7 +25,7 @@ describe("runFixture", () => {
     ext.installer.testSupported = async () => ({ supported: false, requiredFiles: [] });
     const result = await runFixture(
       ext,
-      { origin: "mostPopular", modId: 2, fileId: 2, fileName: "x.zip" },
+      { origin: "mostPopular", modId: 2, fileId: 2, fileName: "x.zip", contentPreviewLink: "" },
       ["whatever.txt"],
     );
     expect(result.kind).toBe("rejected");
@@ -38,7 +38,7 @@ describe("runFixture", () => {
     };
     const result = await runFixture(
       ext,
-      { origin: "mostPopular", modId: 3, fileId: 3, fileName: "y.zip" },
+      { origin: "mostPopular", modId: 3, fileId: 3, fileName: "y.zip", contentPreviewLink: "" },
       ["whatever.txt"],
     );
     expect(result.kind).toBe("failed");
