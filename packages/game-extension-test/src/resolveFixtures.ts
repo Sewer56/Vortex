@@ -1,82 +1,54 @@
 import type { INexusClient } from "./nexusClient";
 import type { IFixture, IGameExtensionTestDescriptor } from "./types";
 
+/** Mod-level fixture row, before per-file resolution. */
+export interface IModRef {
+  origin: IFixture["origin"];
+  modId: number;
+}
+
 /**
- * Fetch fixture rows for one game from the live Nexus API based on its
- * descriptor. Selects the *latest* file per mod (or every file in a collection).
+ * Fetch the *mod list* for one game from the live Nexus API based on its
+ * descriptor. Each row identifies a mod; the per-mod file resolution + manifest
+ * fetch happens lazily inside each test (so it parallelises across vitest
+ * workers instead of blocking the CLI prep phase).
  */
-export async function resolveFixtures(
+export async function resolveModRefs(
   client: INexusClient,
   descriptor: IGameExtensionTestDescriptor,
-): Promise<IFixture[]> {
-  const seen = new Set<number>(); // dedup by fileId
-  const out: IFixture[] = [];
-  const tryAdd = (f: IFixture) => {
-    if (seen.has(f.fileId)) return;
-    seen.add(f.fileId);
-    out.push(f);
+): Promise<IModRef[]> {
+  const seen = new Set<number>();
+  const out: IModRef[] = [];
+  const tryAdd = (r: IModRef) => {
+    if (seen.has(r.modId)) return;
+    seen.add(r.modId);
+    out.push(r);
   };
 
-  const collect = async (
-    origin: IFixture["origin"],
-    mods: Awaited<ReturnType<INexusClient["listMostPopular"]>>,
-    domain: string,
-  ) => {
-    for (const m of mods) {
-      let files;
-      try {
-        files = await client.listModFiles(domain, m.modId);
-      } catch (err: unknown) {
-        // Individual mods may be deleted, hidden, or otherwise inaccessible
-        // (403/404). Skip them rather than aborting the whole run.
-        const status =
-          typeof err === "object" && err !== null && "statusCode" in err
-            ? (err as { statusCode: number }).statusCode
-            : undefined;
-        if (status === 403 || status === 404) {
-          continue;
-        }
-        throw err;
-      }
-      const latest = files.sort((a, b) => b.uploadedAt.getTime() - a.uploadedAt.getTime())[0];
-      if (!latest) continue;
-      tryAdd({
-        origin,
-        modId: m.modId,
-        fileId: latest.fileId,
-        fileName: latest.name,
-        contentPreviewLink: latest.contentPreviewLink,
-      });
-    }
+  const collect = (origin: IModRef["origin"], mods: Array<{ modId: number }>) => {
+    for (const m of mods) tryAdd({ origin, modId: m.modId });
   };
 
   const d = descriptor.nexusGameDomain;
   if (descriptor.fixtures.all) {
-    await collect("mostPopular", await client.listAllMods(d), d);
+    collect("mostPopular", await client.listAllMods(d));
   }
   if (descriptor.fixtures.mostPopular > 0) {
-    await collect(
-      "mostPopular",
-      await client.listMostPopular(d, descriptor.fixtures.mostPopular),
-      d,
-    );
+    collect("mostPopular", await client.listMostPopular(d, descriptor.fixtures.mostPopular));
   }
   if (descriptor.fixtures.mostRecent > 0) {
-    await collect("mostRecent", await client.listMostRecent(d, descriptor.fixtures.mostRecent), d);
+    collect("mostRecent", await client.listMostRecent(d, descriptor.fixtures.mostRecent));
   }
   if (descriptor.fixtures.oldest > 0) {
-    await collect("oldest", await client.listOldest(d, descriptor.fixtures.oldest), d);
+    collect("oldest", await client.listOldest(d, descriptor.fixtures.oldest));
   }
   if (descriptor.fixtures.allCollections) {
     let cols: Awaited<ReturnType<INexusClient["listCollections"]>>;
     try {
       cols = await client.listCollections(d);
     } catch (err: unknown) {
-      // listCollections uses a GraphQL query whose schema may not match every
-      // game; treat listing failure as "no collections available" rather than
-      // aborting the whole run.
       console.warn(
-        `resolveFixtures: listCollections failed for ${d}; skipping collection fixtures. ` +
+        `resolveModRefs: listCollections failed for ${d}; skipping collection fixtures. ` +
           (err instanceof Error ? err.message : String(err)),
       );
       cols = [];
@@ -84,10 +56,10 @@ export async function resolveFixtures(
     for (const c of cols) {
       try {
         const mods = await client.listCollectionMods(d, c.slug);
-        await collect({ type: "collection", collectionId: c.slug }, mods, d);
+        collect({ type: "collection", collectionId: c.slug }, mods);
       } catch (err: unknown) {
         console.warn(
-          `resolveFixtures: collection ${c.slug} failed; skipping. ` +
+          `resolveModRefs: collection ${c.slug} failed; skipping. ` +
             (err instanceof Error ? err.message : String(err)),
         );
       }

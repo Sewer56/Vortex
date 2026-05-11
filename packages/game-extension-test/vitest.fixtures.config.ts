@@ -16,5 +16,8 @@ export default defineConfig({
   test: {
     environment: "node",
     include: [".fixtures/**/*.test.ts"],
+    // Each fixture makes at least two HTTP calls (listModFiles + manifest);
+    // a slow Nexus response can easily exceed the 5s default.
+    testTimeout: 30_000,
   },
 });
