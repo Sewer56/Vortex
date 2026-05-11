@@ -63,6 +63,7 @@ export const healthCheck: IModHealthCheck = {
       "xrebirth-shader-injector",
       "xrebirth-utility",
       "xrebirth-documentation",
+      "xrebirth-save-patch",
     ]);
     const taggedNonContentXml = modType !== undefined && TAGGED_NON_CONTENT_XML.has(modType);
 

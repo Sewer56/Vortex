@@ -8,6 +8,7 @@ import { healthCheck } from "./diagnostic";
 import { installDocumentation, testDocumentation } from "./installers/documentationInstaller";
 import { installDropIn, testDropIn } from "./installers/dropInInstaller";
 import { installSavegame, testSavegame } from "./installers/savegameInstaller";
+import { installSavePatch, testSavePatch } from "./installers/savePatchInstaller";
 import { installSweetFx, testSweetFx } from "./installers/sweetFxInstaller";
 import { installUtility, testUtility } from "./installers/utilityInstaller";
 import { XREBIRTH_STOP_PATTERNS } from "./stopPatterns";
@@ -86,6 +87,8 @@ function main(context: types.IExtensionContext): boolean {
   context.registerInstaller("xrebirth-shader-injector", 65, testSweetFx, installSweetFx);
   context.registerInstaller("xrebirth-utility", 70, testUtility, installUtility);
   context.registerInstaller("xrebirth-dropin", 75, testDropIn, installDropIn);
+  // Save-edit / MD patch XMLs: archives containing only .xml files at root.
+  context.registerInstaller("xrebirth-save-patch", 80, testSavePatch, installSavePatch);
   // Documentation last: only fires if no other installer matched and every
   // file is a doc-type.
   context.registerInstaller("xrebirth-documentation", 90, testDocumentation, installDocumentation);
