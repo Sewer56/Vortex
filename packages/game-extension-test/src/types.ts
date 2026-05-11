@@ -1,0 +1,50 @@
+/**
+ * Per-game opt-in descriptor exported as `testDescriptor` from each extension.
+ */
+export interface IGameExtensionTestDescriptor {
+  /** Internal Vortex game id, matches the value passed to registerGame. */
+  gameId: string;
+
+  /** Nexus game-domain slug used when calling the Nexus API. */
+  nexusGameDomain: string;
+
+  fixtures: {
+    mostPopular: number;
+    mostRecent: number;
+    oldest: number;
+    allCollections: boolean;
+  };
+
+  /**
+   * Maps a filename (matched by `path.basename`) to a generator that returns
+   * the bytes/string to return when the installer reads that file.
+   *
+   * The generator receives a context object so different fixtures can produce
+   * different content if needed.
+   */
+  syntheticContent: Record<string, (ctx: ISyntheticContext) => string | Buffer>;
+}
+
+export interface ISyntheticContext {
+  /** Stable identifier derived from manifest's file_id (for use as mod id). */
+  manifestId: string;
+  modId: number;
+  fileId: number;
+}
+
+/** A single fixture row resolved from the Nexus API. */
+export interface IFixture {
+  origin: "mostPopular" | "mostRecent" | "oldest" | { type: "collection"; collectionId: string };
+  modId: number;
+  fileId: number;
+  fileName: string;
+  /** File-tree manifest (paths relative to archive root). Lazy-fetched. */
+  manifest?: string[];
+}
+
+/** Outcome of running one fixture. */
+export type FixtureOutcome =
+  | { kind: "passed"; modCheckMessage: string }
+  | { kind: "rejected"; reason: string }
+  | { kind: "failed"; issues: string[] }
+  | { kind: "skipped"; reason: string };
