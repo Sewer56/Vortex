@@ -2246,6 +2246,9 @@ interface IExtensionContext {
     // Warning: (ae-forgotten-export) The symbol "GameVersionProviderFunc" needs to be exported by the entry point api.d.ts
     // Warning: (ae-forgotten-export) The symbol "IGameVersionProviderOptions" needs to be exported by the entry point api.d.ts
     registerGameVersionProvider?: (id: string, priority: number, supported: GameVersionProviderTest, getVersion: GameVersionProviderFunc, options?: IGameVersionProviderOptions) => void;
+    // Warning: (ae-forgotten-export) The symbol "IHealthCheck" needs to be exported by the entry point api.d.ts
+    // Warning: (ae-forgotten-export) The symbol "IModHealthCheck" needs to be exported by the entry point api.d.ts
+    registerHealthCheck: (healthCheck: IHealthCheck | IModHealthCheck) => void;
     registerHistoryStack: (id: string, options: IHistoryStack) => void;
     registerInstaller: (id: string, priority: number, testSupported: TestSupported, install: InstallFunc) => void;
     registerInterpreter: (extension: string, apply: (call: IRunParameters) => IRunParameters) => void;
@@ -2360,11 +2363,11 @@ interface IGame extends ITool {
         [typeId: string]: string;
     };
     mergeArchive?: (filePath: string) => boolean;
-    mergeMods: boolean | ((mod: IMod) => string);
+    mergeMods?: boolean | ((mod: IMod) => string);
     modTypes?: IModType[];
     overrides?: string[];
     queryArgs?: {
-        [storeId: string]: IStoreQuery[];
+        [storeId: string]: string | IStoreQuery | IStoreQuery[];
     };
     queryModPath: (gamePath: string) => string;
     requiresCleanup?: boolean;
