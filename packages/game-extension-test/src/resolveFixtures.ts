@@ -23,7 +23,21 @@ export async function resolveFixtures(
     domain: string,
   ) => {
     for (const m of mods) {
-      const files = await client.listModFiles(domain, m.modId);
+      let files;
+      try {
+        files = await client.listModFiles(domain, m.modId);
+      } catch (err: unknown) {
+        // Individual mods may be deleted, hidden, or otherwise inaccessible
+        // (403/404). Skip them rather than aborting the whole run.
+        const status =
+          typeof err === "object" && err !== null && "statusCode" in err
+            ? (err as { statusCode: number }).statusCode
+            : undefined;
+        if (status === 403 || status === 404) {
+          continue;
+        }
+        throw err;
+      }
       const latest = files.sort((a, b) => b.uploadedAt.getTime() - a.uploadedAt.getTime())[0];
       if (!latest) continue;
       tryAdd({ origin, modId: m.modId, fileId: latest.fileId, fileName: latest.name });
@@ -45,10 +59,29 @@ export async function resolveFixtures(
     await collect("oldest", await client.listOldest(d, descriptor.fixtures.oldest), d);
   }
   if (descriptor.fixtures.allCollections) {
-    const cols = await client.listCollections(d);
+    let cols;
+    try {
+      cols = await client.listCollections(d);
+    } catch (err: unknown) {
+      // listCollections uses a GraphQL query whose schema may not match every
+      // game; treat listing failure as "no collections available" rather than
+      // aborting the whole run.
+      console.warn(
+        `resolveFixtures: listCollections failed for ${d}; skipping collection fixtures. ` +
+          (err instanceof Error ? err.message : String(err)),
+      );
+      cols = [];
+    }
     for (const c of cols) {
-      const mods = await client.listCollectionMods(d, c.slug);
-      await collect({ type: "collection", collectionId: c.slug }, mods, d);
+      try {
+        const mods = await client.listCollectionMods(d, c.slug);
+        await collect({ type: "collection", collectionId: c.slug }, mods, d);
+      } catch (err: unknown) {
+        console.warn(
+          `resolveFixtures: collection ${c.slug} failed; skipping. ` +
+            (err instanceof Error ? err.message : String(err)),
+        );
+      }
     }
   }
   return out;

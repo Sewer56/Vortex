@@ -17,6 +17,9 @@
   "vortex": {
     "gameExtensionTest": true
   },
+  "dependencies": {
+    "xml2js": "catalog:"
+  },
   "devDependencies": {
     "@types/xml2js": "catalog:",
     "vortex-api": "workspace:*",
