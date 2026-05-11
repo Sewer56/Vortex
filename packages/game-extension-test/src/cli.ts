@@ -26,9 +26,15 @@ const env = {
 const vitestConfig = path.join(__dirname, "..", "vitest.config.ts");
 const entryFile = "src/test-entry.test.ts";
 
-const result = spawnSync("pnpm", ["exec", "vitest", "run", "--config", vitestConfig, entryFile], {
-  stdio: "inherit",
-  env,
-  cwd: path.join(__dirname, ".."),
-});
+// `verbose` reporter prints each fixture as it completes — useful when one
+// run can resolve hundreds of fixtures and execution takes minutes.
+const result = spawnSync(
+  "pnpm",
+  ["exec", "vitest", "run", "--config", vitestConfig, "--reporter=verbose", entryFile],
+  {
+    stdio: "inherit",
+    env,
+    cwd: path.join(__dirname, ".."),
+  },
+);
 process.exit(result.status ?? 1);
