@@ -9,6 +9,7 @@ import {
   HealthCheckTrigger,
   HealthCheckSeverity,
 } from "../../types/IHealthCheck";
+import type { IHealthCheck, IModHealthCheck } from "../../types/IHealthCheck";
 import { activeGameId } from "../../util/selectors";
 import { setHealthCheckRunning } from "./actions/session";
 import { createHealthCheckApi } from "./api";
@@ -29,6 +30,17 @@ let legacyAdapter: LegacyTestAdapter | null = null;
 let healthCheckApi: IHealthCheckApi | null = null;
 
 function init(context: IExtensionContext): boolean {
+  // Pending registrations buffered until the registry exists (created in context.once).
+  const pendingChecks: Array<IHealthCheck | IModHealthCheck> = [];
+
+  context.registerHealthCheck = (hc: IHealthCheck | IModHealthCheck) => {
+    if (registry !== null) {
+      registry.register(hc);
+    } else {
+      pendingChecks.push(hc);
+    }
+  };
+
   // Register session reducer for health check state (registered in both main and renderer)
   context.registerReducer(["session", "healthCheck"], sessionReducer);
 
@@ -56,6 +68,10 @@ function init(context: IExtensionContext): boolean {
   context.once(() => {
     // Create local registry for health checks
     registry = new HealthCheckRegistry(context.api);
+    for (const hc of pendingChecks) {
+      registry.register(hc);
+    }
+    pendingChecks.length = 0;
     legacyAdapter = new LegacyTestAdapter(registry, context.api);
 
     // Create health check API
