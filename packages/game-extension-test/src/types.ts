@@ -29,6 +29,22 @@ export interface IGameExtensionTestDescriptor {
    * different content if needed.
    */
   syntheticContent: Record<string, (ctx: ISyntheticContext) => string | Buffer>;
+
+  /**
+   * Heuristics that classify fixtures as "not worth running through the
+   * installer chain" (cheat tables, nested archives requiring prior
+   * extraction, single instruction-text uploads, etc.).
+   *
+   * Evaluated after the manifest is fetched, before testSupported runs. If
+   * any heuristic's `matches(files)` returns true, the fixture is reported as
+   * skipped with the heuristic's reason and the installer chain is bypassed.
+   */
+  skipHeuristics?: ISkipHeuristic[];
+}
+
+export interface ISkipHeuristic {
+  reason: string;
+  matches: (files: string[]) => boolean;
 }
 
 export interface ISyntheticContext {

@@ -30,6 +30,15 @@ export async function runOneFixture(args: {
   }
 
   const ext = await loadExtension(args.extensionDir);
+
+  // Apply descriptor-level skip heuristics before driving the installer.
+  const skipHeuristics = ext.testDescriptor.skipHeuristics ?? [];
+  for (const h of skipHeuristics) {
+    if (h.matches(manifest)) {
+      return `skipped by heuristic: ${h.reason}`;
+    }
+  }
+
   const outcome = await runFixture(ext, args.fixture, manifest);
   if (outcome.kind === "failed") {
     throw new Error(outcome.issues.join("; "));
