@@ -1,23 +1,49 @@
 import * as path from "node:path";
 
-// IModHealthCheck and friends live in the renderer source tree at
-// src/renderer/src/types/IHealthCheck. The relative path from this extension
-// is 5 dirs up. If that path doesn't resolve under the extension's tsconfig,
-// declare a local mirror of the interface as a fallback (see note below).
-import type { IModHealthCheck } from "../../../../src/renderer/src/types/IHealthCheck";
-import {
-  HealthCheckCategory,
-  HealthCheckSeverity,
-  HealthCheckTrigger,
-} from "../../../../src/renderer/src/types/IHealthCheck";
+/**
+ * Minimal mirror of the framework's IModHealthCheck shape, kept local to avoid
+ * dragging the renderer source tree into this extension's typecheck. The
+ * harness consumes this object structurally; if/when the framework types are
+ * re-exported via `vortex-api`, the imports can be restored.
+ */
+type Severity = "info" | "warning" | "error" | "critical";
+type Status = "passed" | "failed" | "warning" | "error";
+
+interface IModCheckContext {
+  modId: string;
+  files: string[];
+  readFile: (p: string) => Promise<Buffer>;
+  attributes: Record<string, unknown>;
+}
+
+interface IModHealthCheck {
+  id: string;
+  name: string;
+  description: string;
+  category: "mods";
+  severity: Severity;
+  triggers: string[];
+  checkMod: (
+    api: unknown,
+    mod: IModCheckContext,
+  ) => Promise<{
+    checkId: string;
+    status: Status;
+    severity: Severity;
+    message: string;
+    details?: string;
+    executionTime: number;
+    timestamp: Date;
+  }>;
+}
 
 export const healthCheck: IModHealthCheck = {
   id: "xrebirth-mod-install-valid",
   name: "X Rebirth — mod install valid",
   description: "Verifies that installed X Rebirth mods have the expected structure.",
-  category: HealthCheckCategory.Mods,
-  severity: HealthCheckSeverity.Warning,
-  triggers: [HealthCheckTrigger.ModsChanged, HealthCheckTrigger.Manual],
+  category: "mods",
+  severity: "warning",
+  triggers: ["mods-changed", "manual"],
   checkMod: async (_api, mod) => {
     const startedAt = Date.now();
     const issues: string[] = [];
@@ -35,8 +61,8 @@ export const healthCheck: IModHealthCheck = {
       issues.push("customFileName attribute not set");
     }
 
-    const severity = issues.length === 0 ? HealthCheckSeverity.Info : HealthCheckSeverity.Warning;
-    const status: "passed" | "warning" = issues.length === 0 ? "passed" : "warning";
+    const severity: Severity = issues.length === 0 ? "info" : "warning";
+    const status: Status = issues.length === 0 ? "passed" : "warning";
 
     return {
       checkId: "xrebirth-mod-install-valid",
