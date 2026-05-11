@@ -15,9 +15,13 @@ export default defineConfig({
   },
   test: {
     environment: "node",
-    include: [".fixtures/**/*.test.ts"],
+    include: ["src/test-entry.test.ts"],
     // Each fixture makes at least two HTTP calls (listModFiles + manifest);
     // a slow Nexus response can easily exceed the 5s default.
     testTimeout: 30_000,
+    // One authenticated Nexus call per fixture; 24 concurrent stays under the
+    // SDK's 25-req/s burst limit with headroom for the CDN manifest fetches
+    // (which are unmetered).
+    maxConcurrency: 24,
   },
 });
