@@ -5,9 +5,11 @@ import type { types } from "vortex-api";
 import { parseStringPromise } from "xml2js";
 
 import { healthCheck } from "./diagnostic";
+import { installDocumentation, testDocumentation } from "./installers/documentationInstaller";
 import { installDropIn, testDropIn } from "./installers/dropInInstaller";
 import { installSavegame, testSavegame } from "./installers/savegameInstaller";
 import { installSweetFx, testSweetFx } from "./installers/sweetFxInstaller";
+import { installUtility, testUtility } from "./installers/utilityInstaller";
 import { XREBIRTH_STOP_PATTERNS } from "./stopPatterns";
 
 function testSupported(files: string[], gameId: string): Promise<types.ISupportedResult> {
@@ -82,7 +84,11 @@ function main(context: types.IExtensionContext): boolean {
   // modType so a future registerModType call can route deployment.
   context.registerInstaller("xrebirth-savegame", 60, testSavegame, installSavegame);
   context.registerInstaller("xrebirth-shader-injector", 65, testSweetFx, installSweetFx);
+  context.registerInstaller("xrebirth-utility", 70, testUtility, installUtility);
   context.registerInstaller("xrebirth-dropin", 75, testDropIn, installDropIn);
+  // Documentation last: only fires if no other installer matched and every
+  // file is a doc-type.
+  context.registerInstaller("xrebirth-documentation", 90, testDocumentation, installDocumentation);
 
   (context as any).registerHealthCheck?.(healthCheck);
 

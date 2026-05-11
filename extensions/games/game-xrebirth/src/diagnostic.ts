@@ -58,8 +58,13 @@ export const healthCheck: IModHealthCheck = {
     const stopPatternRegexes = XREBIRTH_STOP_PATTERNS.map((p) => new RegExp(p, "i"));
     const matchesStopPattern = mod.files.some((f) => stopPatternRegexes.some((re) => re.test(f)));
     const modType = mod.attributes.modType as string | undefined;
-    const taggedNonContentXml =
-      modType === "xrebirth-savegame" || modType === "xrebirth-shader-injector";
+    const TAGGED_NON_CONTENT_XML = new Set([
+      "xrebirth-savegame",
+      "xrebirth-shader-injector",
+      "xrebirth-utility",
+      "xrebirth-documentation",
+    ]);
+    const taggedNonContentXml = modType !== undefined && TAGGED_NON_CONTENT_XML.has(modType);
 
     if (hasContentXml) {
       // content.xml mod: also require the customFileName attribute, since that's

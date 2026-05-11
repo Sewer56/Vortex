@@ -33,4 +33,8 @@ export const XREBIRTH_STOP_PATTERNS: string[] = [
   "[^/]*\\.cur$",
   // Audio replacements (numbered .ogg files, music .mp3, voice .wav).
   "[^/]*\\.(ogg|mp3|wav)$",
+  // Video replacements (intro videos, cutscenes).
+  "[^/]*\\.(mkv|mp4|webm)$",
+  // Standalone configs (ReShade presets, etc.) — accepted as drop-ins.
+  "[^/]*\\.ini$",
 ];
