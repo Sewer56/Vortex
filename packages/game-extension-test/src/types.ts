@@ -48,3 +48,14 @@ export type FixtureOutcome =
   | { kind: "rejected"; reason: string }
   | { kind: "failed"; issues: string[] }
   | { kind: "skipped"; reason: string };
+
+/**
+ * Per-mod context passed to a healthcheck. Mirrors the framework's
+ * IModCheckContext shape; kept here to avoid a cross-package import.
+ */
+export interface IModCheckContext {
+  modId: string;
+  files: string[];
+  readFile: (path: string) => Promise<Buffer>;
+  attributes: Record<string, unknown>;
+}
