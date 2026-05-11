@@ -100,6 +100,10 @@ export type PerModCheckFunction = (
  * Per-mod variant of IHealthCheck. The registry iterates installed mods for the
  * active game, calls `checkMod` per mod, and aggregates the results.
  * Identical metadata fields to IHealthCheck, with `checkMod` in place of `check`.
+ *
+ * `fix` is also omitted from the inherited fields: `HealthCheckFixFunction`
+ * takes only `(api)` and can't meaningfully fix a per-mod problem. A per-mod
+ * fix shape can be added in the future if needed.
  */
 export interface IModHealthCheck extends Omit<IHealthCheck, "check" | "fix"> {
   checkMod: PerModCheckFunction;

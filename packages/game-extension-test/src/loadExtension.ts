@@ -38,6 +38,14 @@ export async function loadExtension(extensionDir: string): Promise<ILoadedExtens
     () => ({}),
   );
 
+  if (descriptorMod.testDescriptor && !(diagnosticMod as any).healthCheck) {
+    throw new Error(
+      `Extension ${extensionDir} exports testDescriptor but has no healthCheck ` +
+        `(expected at src/diagnostic.ts: export const healthCheck = ...). ` +
+        `Without a healthcheck the harness would silently pass every fixture.`,
+    );
+  }
+
   return {
     installer: stubContext._installer,
     testDescriptor: descriptorMod.testDescriptor,

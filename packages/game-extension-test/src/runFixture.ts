@@ -53,9 +53,6 @@ export async function runFixture(
     return typeof out === "string" ? Buffer.from(out, "utf8") : out;
   });
 
-  if (!ext.healthCheck) {
-    return { kind: "passed", modCheckMessage: "(no healthcheck registered)" };
-  }
   const checkResult = await ext.healthCheck.checkMod(api, modCtx);
   if (checkResult.status === "failed" || checkResult.status === "error") {
     return {

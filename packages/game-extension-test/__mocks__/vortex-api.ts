@@ -22,6 +22,12 @@ export class ProcessCanceled extends Error {
   }
 }
 
+/**
+ * Module-level mutable resolver. The harness's runner is sequential per game,
+ * so the resolver is safe to mutate between fixtures. If the runner ever
+ * parallelises fixtures, replace this with a context-keyed lookup — concurrent
+ * fixtures would otherwise read each other's synthetic content.
+ */
 let readFileResolver: (absPath: string) => Promise<Buffer> = async () => Buffer.alloc(0);
 
 export function setReadFileResolver(resolver: (absPath: string) => Promise<Buffer>) {
