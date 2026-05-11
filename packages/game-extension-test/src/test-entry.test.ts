@@ -46,17 +46,18 @@ if (!repoRoot || !apiKey) {
     // Vite transform handles it natively at runtime.
     // @ts-ignore TS1378
     const descriptor = // @ts-ignore TS1378
-    (await import(path.join(found.packageDir, "src", "test-descriptor.ts"))).testDescriptor;
+      (await import(path.join(found.packageDir, "src", "test-descriptor.ts"))).testDescriptor;
     // @ts-ignore TS1378
     const refs = await resolveModRefs(client, descriptor);
     for (const ref of refs) {
-      test.concurrent(`${descriptor.gameId} > modId=${ref.modId}`, async () => {
-        await runOneFixture({
+      test.concurrent(`${descriptor.gameId} > modId=${ref.modId}`, async (ctx) => {
+        const skipReason = await runOneFixture({
           extensionDir: found.packageDir,
           nexusGameDomain: descriptor.nexusGameDomain,
           modId: ref.modId,
           origin: ref.origin,
         });
+        if (skipReason) ctx.skip(skipReason);
       });
     }
   }
