@@ -72,8 +72,12 @@ function collectFiles(node: IPreviewNode, out: string[]): void {
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
- * Wraps a call with exponential back-off + jitter on HTTP 429 responses.
- * Up to `maxRetries` retries, base delay 1 s, cap 30 s.
+ * Wraps a call with exponential back-off + jitter on transient failures:
+ *   - HTTP 408, 429, and 5xx responses
+ *   - Network errors with no status (fetch-level rejections: ECONNRESET,
+ *     ENOTFOUND, AbortError, etc.)
+ *
+ * Up to `maxRetries` retries, base delay 1 s, cap 30 s per sleep.
  */
 async function withRetry<T>(fn: () => Promise<T>, maxRetries = 3): Promise<T> {
   let lastError: unknown;
@@ -89,7 +93,9 @@ async function withRetry<T>(fn: () => Promise<T>, maxRetries = 3): Promise<T> {
             ? (err as { status: number }).status
             : undefined;
 
-      if (status !== 429 || attempt === maxRetries) {
+      const transient =
+        status === undefined || status === 408 || status === 429 || (status >= 500 && status < 600);
+      if (!transient || attempt === maxRetries) {
         throw err;
       }
 
