@@ -35,7 +35,12 @@ export interface INexusCollectionSummary {
 
 export interface INexusFileSummary {
   fileId: number;
+  /** Display name (human-readable, no extension). */
   name: string;
+  /** Actual filename with extension. */
+  fileName: string;
+  /** Nexus category: "MAIN", "PATCH", "OPTIONAL", "OLD_VERSION", "MISCELLANEOUS", "DELETED", "ARCHIVED". */
+  categoryName: string;
   uploadedAt: Date;
   /** URL of the archive content-preview JSON; empty string if not provided. */
   contentPreviewLink: string;
@@ -260,6 +265,8 @@ export function createNexusClient(apiKey: string): INexusClient {
       return result.files.map((f) => ({
         fileId: f.file_id,
         name: f.name,
+        fileName: (f as any).file_name ?? "",
+        categoryName: (f as any).category_name ?? "",
         uploadedAt: new Date(f.uploaded_timestamp * 1000),
         contentPreviewLink: f.content_preview_link ?? "",
       }));

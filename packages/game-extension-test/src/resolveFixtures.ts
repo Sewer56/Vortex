@@ -1,46 +1,58 @@
 import type { INexusClient } from "./nexusClient";
 import type { IFixture, IGameExtensionTestDescriptor } from "./types";
 
-/** Mod-level fixture row, before per-file resolution. */
-export interface IModRef {
+/** Mod-level row before per-file expansion. */
+interface IModRef {
   origin: IFixture["origin"];
   modId: number;
 }
 
+/** File-level categories that we skip (Nexus's `category_name` values). */
+const EXCLUDED_CATEGORIES = new Set(["DELETED", "ARCHIVED"]);
+
+/** Filename extensions for which Nexus generates a content-preview JSON. */
+const ARCHIVE_EXTENSIONS = [".zip", ".7z", ".rar", ".tar", ".tar.gz", ".tgz"];
+
 /**
- * Fetch the *mod list* for one game from the live Nexus API based on its
- * descriptor. Each row identifies a mod; the per-mod file resolution + manifest
- * fetch happens lazily inside each test (so it parallelises across vitest
- * workers instead of blocking the CLI prep phase).
+ * For each opted-in source in the descriptor, enumerate every non-deleted,
+ * non-archived archive file for every selected mod. Returns one `IFixture` per
+ * file (so a mod with five archive uploads becomes five fixtures).
+ *
+ * Parallelises the per-mod `listModFiles` calls via the client's built-in
+ * rate-limiter (~25 req/s).
  */
-export async function resolveModRefs(
+export async function resolveFixtures(
   client: INexusClient,
   descriptor: IGameExtensionTestDescriptor,
-): Promise<IModRef[]> {
-  const seen = new Set<number>();
-  const out: IModRef[] = [];
-  const tryAdd = (r: IModRef) => {
-    if (seen.has(r.modId)) return;
-    seen.add(r.modId);
-    out.push(r);
-  };
-
-  const collect = (origin: IModRef["origin"], mods: Array<{ modId: number }>) => {
-    for (const m of mods) tryAdd({ origin, modId: m.modId });
+): Promise<IFixture[]> {
+  const seenMod = new Set<number>();
+  const modRefs: IModRef[] = [];
+  const tryAddMod = (r: IModRef) => {
+    if (seenMod.has(r.modId)) return;
+    seenMod.add(r.modId);
+    modRefs.push(r);
   };
 
   const d = descriptor.nexusGameDomain;
   if (descriptor.fixtures.all) {
-    collect("mostPopular", await client.listAllMods(d));
+    for (const m of await client.listAllMods(d)) {
+      tryAddMod({ origin: "mostPopular", modId: m.modId });
+    }
   }
   if (descriptor.fixtures.mostPopular > 0) {
-    collect("mostPopular", await client.listMostPopular(d, descriptor.fixtures.mostPopular));
+    for (const m of await client.listMostPopular(d, descriptor.fixtures.mostPopular)) {
+      tryAddMod({ origin: "mostPopular", modId: m.modId });
+    }
   }
   if (descriptor.fixtures.mostRecent > 0) {
-    collect("mostRecent", await client.listMostRecent(d, descriptor.fixtures.mostRecent));
+    for (const m of await client.listMostRecent(d, descriptor.fixtures.mostRecent)) {
+      tryAddMod({ origin: "mostRecent", modId: m.modId });
+    }
   }
   if (descriptor.fixtures.oldest > 0) {
-    collect("oldest", await client.listOldest(d, descriptor.fixtures.oldest));
+    for (const m of await client.listOldest(d, descriptor.fixtures.oldest)) {
+      tryAddMod({ origin: "oldest", modId: m.modId });
+    }
   }
   if (descriptor.fixtures.allCollections) {
     let cols: Awaited<ReturnType<INexusClient["listCollections"]>>;
@@ -48,22 +60,67 @@ export async function resolveModRefs(
       cols = await client.listCollections(d);
     } catch (err: unknown) {
       console.warn(
-        `resolveModRefs: listCollections failed for ${d}; skipping collection fixtures. ` +
+        `resolveFixtures: listCollections failed for ${d}; skipping collection fixtures. ` +
           (err instanceof Error ? err.message : String(err)),
       );
       cols = [];
     }
     for (const c of cols) {
       try {
-        const mods = await client.listCollectionMods(d, c.slug);
-        collect({ type: "collection", collectionId: c.slug }, mods);
+        for (const m of await client.listCollectionMods(d, c.slug)) {
+          tryAddMod({ origin: { type: "collection", collectionId: c.slug }, modId: m.modId });
+        }
       } catch (err: unknown) {
         console.warn(
-          `resolveModRefs: collection ${c.slug} failed; skipping. ` +
+          `resolveFixtures: collection ${c.slug} failed; skipping. ` +
             (err instanceof Error ? err.message : String(err)),
         );
       }
     }
   }
+
+  // Fan out: one listModFiles per mod, throttled by the client's rate-limiter.
+  // Individual 403/404s (deleted/hidden mods) are swallowed; everything else
+  // propagates and aborts the run.
+  const perModFiles = await Promise.all(
+    modRefs.map(async (ref) => {
+      try {
+        const files = await client.listModFiles(d, ref.modId);
+        return { ref, files };
+      } catch (err: unknown) {
+        const status =
+          typeof err === "object" && err !== null && "statusCode" in err
+            ? (err as { statusCode: number }).statusCode
+            : undefined;
+        if (status === 403 || status === 404) {
+          return { ref, files: [] };
+        }
+        throw err;
+      }
+    }),
+  );
+
+  const out: IFixture[] = [];
+  const seenFile = new Set<number>();
+  for (const { ref, files } of perModFiles) {
+    for (const f of files) {
+      if (EXCLUDED_CATEGORIES.has(f.categoryName)) continue;
+      if (!isArchiveFile(f.fileName)) continue;
+      if (seenFile.has(f.fileId)) continue;
+      seenFile.add(f.fileId);
+      out.push({
+        origin: ref.origin,
+        modId: ref.modId,
+        fileId: f.fileId,
+        fileName: f.fileName,
+        contentPreviewLink: f.contentPreviewLink,
+      });
+    }
+  }
   return out;
+}
+
+function isArchiveFile(name: string): boolean {
+  const lower = name.toLowerCase();
+  return ARCHIVE_EXTENSIONS.some((ext) => lower.endsWith(ext));
 }

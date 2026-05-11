@@ -3,91 +3,48 @@ import { runFixture } from "./runFixture";
 import type { IFixture } from "./types";
 
 /**
- * Lazy per-fixture pipeline: resolve the latest file for the mod, fetch its
- * manifest, then drive installer + diagnostic.
+ * Run a single pre-resolved fixture: fetch the manifest, drive the installer,
+ * run the diagnostic.
  *
- * Designed to run inside a generated per-fixture vitest stub. The CLI's prep
- * phase only enumerates mod IDs; the per-mod file lookup + manifest fetch
- * happens here so it parallelises across vitest workers.
- *
- * Uses raw fetch instead of the @nexusmods/nexus-api SDK to avoid the
- * Nexus.create() validate-key call that would otherwise fire once per test.
+ * Returns a skip reason string when something genuinely couldn't be tested
+ * (manifest missing on the CDN). Throws on real failures, including the
+ * installer rejecting the file — rejection means "no installer handler
+ * registered for this file type" and is a signal we need to address, not hide.
  */
-/** Returns a skip reason if the test should be marked skipped; undefined on pass. */
 export async function runOneFixture(args: {
   extensionDir: string;
-  nexusGameDomain: string;
-  modId: number;
-  origin: IFixture["origin"];
+  fixture: IFixture;
 }): Promise<string | undefined> {
-  const apiKey = process.env.NEXUS_API_KEY;
-  if (!apiKey) {
-    throw new Error("NEXUS_API_KEY must be set in the test environment");
+  if (!args.fixture.contentPreviewLink) {
+    return `no content_preview_link for fileId=${args.fixture.fileId}`;
   }
 
-  const filesResp = await fetch(
-    `https://api.nexusmods.com/v1/games/${args.nexusGameDomain}/mods/${args.modId}/files.json`,
-    { headers: { APIKEY: apiKey } },
-  );
-  if (filesResp.status === 403 || filesResp.status === 404) {
-    return `mod ${args.modId} inaccessible (HTTP ${filesResp.status})`;
-  }
-  if (!filesResp.ok) {
-    throw new Error(
-      `listModFiles(${args.nexusGameDomain}, ${args.modId}) returned HTTP ${filesResp.status}`,
-    );
-  }
-  const filesData = (await filesResp.json()) as {
-    files: Array<{
-      file_id: number;
-      name: string;
-      file_name: string;
-      uploaded_timestamp: number;
-      content_preview_link?: string;
-    }>;
-  };
-  if (filesData.files.length === 0) {
-    return `mod ${args.modId} has no files`;
-  }
-  const latest = [...filesData.files].sort(
-    (a, b) => b.uploaded_timestamp - a.uploaded_timestamp,
-  )[0]!;
-
-  if (!isArchiveFile(latest.file_name)) {
-    // Non-archive uploads (.exe installers, raw .dll/.esp/etc.) don't have a
-    // content-preview JSON, so we can't construct a file manifest for them.
-    return `latest file is not an archive: ${latest.file_name}`;
+  let manifest: string[];
+  try {
+    manifest = await fetchManifest(args.fixture.contentPreviewLink);
+  } catch (err: unknown) {
+    if (err instanceof Error && /HTTP 404/.test(err.message)) {
+      return `manifest not on CDN: ${err.message}`;
+    }
+    throw err;
   }
 
-  const fixture: IFixture = {
-    origin: args.origin,
-    modId: args.modId,
-    fileId: latest.file_id,
-    fileName: latest.file_name,
-    contentPreviewLink: latest.content_preview_link ?? "",
-  };
-
-  const manifest = await fetchManifest(fixture.contentPreviewLink);
   const ext = await loadExtension(args.extensionDir);
-  const outcome = await runFixture(ext, fixture, manifest);
+  const outcome = await runFixture(ext, args.fixture, manifest);
   if (outcome.kind === "failed") {
     throw new Error(outcome.issues.join("; "));
+  }
+  if (outcome.kind === "rejected") {
+    throw new Error(
+      `installer rejected file ${args.fixture.fileName} (modId=${args.fixture.modId}, fileId=${args.fixture.fileId}). ` +
+        `If this is intentional, add a more specific installer that supports this file shape; ` +
+        `otherwise the X Rebirth-specific installer's testSupported needs to accept it.`,
+    );
   }
   return undefined;
 }
 
-/** File extensions for which Nexus generates a content-preview JSON. */
-const ARCHIVE_EXTENSIONS = [".zip", ".7z", ".rar", ".tar", ".tar.gz", ".tgz"];
-
-function isArchiveFile(name: string): boolean {
-  const lower = name.toLowerCase();
-  return ARCHIVE_EXTENSIONS.some((ext) => lower.endsWith(ext));
-}
-
 async function fetchManifest(contentPreviewLink: string): Promise<string[]> {
-  if (!contentPreviewLink) {
-    throw new Error("fetchManifest: empty content_preview_link");
-  }
   const url = encodeURI(contentPreviewLink);
   const resp = await fetch(url);
   if (!resp.ok) {

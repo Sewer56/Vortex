@@ -4,19 +4,15 @@ import { test } from "vitest";
 
 import { discoverExtensions } from "./discovery";
 import { createNexusClient } from "./nexusClient";
-import { resolveModRefs } from "./resolveFixtures";
+import { resolveFixtures } from "./resolveFixtures";
 import { runOneFixture } from "./runOneFixture";
 
 /**
- * Single test file that fans out to one `test.concurrent` per Nexus mod at
- * vitest collection time. The CLI sets GAME_EXT_TEST_REPO and
- * GAME_EXT_TEST_GAMES; without those (e.g. running `vitest run` ad-hoc), the
- * file degrades to a single no-op test.
+ * Single test file that fans out to one `test.concurrent` per Nexus *file*
+ * (every non-deleted, non-archived archive across every selected mod).
  *
- * No on-disk stub files: the per-mod fan-out happens in-memory and tests run
- * concurrently in one process (vitest's `maxConcurrency` controls the parallel
- * window). For our I/O-bound workload (HTTP fetches), single-process event-
- * loop concurrency matches worker-pool wall time without the disk artefacts.
+ * The CLI sets GAME_EXT_TEST_REPO and GAME_EXT_TEST_GAMES; without those, the
+ * file degrades to a single no-op test.
  */
 
 const repoRoot = process.env.GAME_EXT_TEST_REPO;
@@ -25,8 +21,7 @@ const apiKey = process.env.NEXUS_API_KEY ?? "";
 
 if (!repoRoot || !apiKey) {
   test("environment not configured (skipped)", () => {
-    // The CLI sets these vars; an ad-hoc `vitest run` outside the CLI skips
-    // the live-API path.
+    // The CLI sets these vars; ad-hoc `vitest run` outside the CLI skips here.
   });
 } else {
   const requested = games === "all" ? null : games.split(",");
@@ -42,20 +37,16 @@ if (!repoRoot || !apiKey) {
 
   const client = createNexusClient(apiKey);
   for (const found of selected) {
-    // tsc complains about top-level await under `module: commonjs`, but vitest's
-    // Vite transform handles it natively at runtime.
-    // @ts-ignore TS1378
+    // @ts-ignore TS1378 — top-level await works under vitest's Vite transform.
     const descriptor = // @ts-ignore TS1378
       (await import(path.join(found.packageDir, "src", "test-descriptor.ts"))).testDescriptor;
     // @ts-ignore TS1378
-    const refs = await resolveModRefs(client, descriptor);
-    for (const ref of refs) {
-      test.concurrent(`${descriptor.gameId} > modId=${ref.modId}`, async (ctx) => {
+    const fixtures = await resolveFixtures(client, descriptor);
+    for (const fx of fixtures) {
+      test.concurrent(`${descriptor.gameId} > modId=${fx.modId} fileId=${fx.fileId} (${fx.fileName})`, async (ctx) => {
         const skipReason = await runOneFixture({
           extensionDir: found.packageDir,
-          nexusGameDomain: descriptor.nexusGameDomain,
-          modId: ref.modId,
-          origin: ref.origin,
+          fixture: fx,
         });
         if (skipReason) ctx.skip(skipReason);
       });
