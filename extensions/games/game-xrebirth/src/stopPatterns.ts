@@ -6,6 +6,14 @@
  * Also passed to `IGame.details.stopPatterns` so the renderer's `getStopPatterns`
  * helper (`installer_fomod_shared/utils/gameSupport.ts:526`) returns them for
  * any FOMOD-aware installer that might inspect this game in the future.
+ *
+ * Patterns are compiled case-insensitive (see `util.compileStopPatterns`) so
+ * `.cat` matches `.CAT`. Some entries deliberately overlap with the more
+ * specific installer matchers in `installers.ts`:
+ *   - the broad `*.ini` rule overlaps with the shader-injector's `d3d9.ini`
+ *   - `ui/.+` / `assets/.+` overlap with the pure-docs `.pdf` / `.md` rule
+ * In every overlap, the more specific installer (lower priority number) wins.
+ * See PRIORITIES in installers.ts for the dispatch order.
  */
 export const XREBIRTH_STOP_PATTERNS: string[] = [
   // X Rebirth game-data archives.
