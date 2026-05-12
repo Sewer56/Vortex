@@ -1,4 +1,6 @@
-import { describe, test, expect } from "vitest";
+import * as fs from "fs";
+
+import { afterEach, describe, test, expect, vi } from "vitest";
 
 import type { IExtensionApi } from "../../../types/IExtensionContext";
 import {
@@ -8,7 +10,7 @@ import {
   type IModCheckContext,
   type IModHealthCheck,
 } from "../../../types/IHealthCheck";
-import { aggregateResults, runPerModCheck } from "./perModRunner";
+import { aggregateResults, buildModCheckContext, runPerModCheck } from "./perModRunner";
 
 const baseResult = (
   status: "passed" | "failed" | "warning" | "error",
@@ -149,5 +151,31 @@ describe("runPerModCheck error handling", () => {
     });
     expect(result.status).toBe("passed");
     expect(result.severity).toBe(HealthCheckSeverity.Info);
+  });
+});
+
+describe("buildModCheckContext", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  // If the mod is uninstalled between enumeration and FS walk, fs.access fails;
+  // the runner currently logs and returns an empty file list, so the check sees
+  // a mod with no files rather than blowing up the whole run.
+  test("missing staging dir yields empty files list (no throw)", async () => {
+    const accessSpy = vi
+      .spyOn(fs.promises, "access")
+      .mockRejectedValue(Object.assign(new Error("ENOENT"), { code: "ENOENT" }));
+
+    const ctx = await buildModCheckContext({
+      modId: "ghost",
+      stagingPath: "/nonexistent/path",
+      attributes: { v: 1 },
+    });
+
+    expect(accessSpy).toHaveBeenCalled();
+    expect(ctx.modId).toBe("ghost");
+    expect(ctx.files).toEqual([]);
+    expect(ctx.attributes).toEqual({ v: 1 });
   });
 });

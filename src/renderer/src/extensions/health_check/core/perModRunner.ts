@@ -1,6 +1,8 @@
 import * as fs from "fs";
 import * as path from "path";
 
+import { unknownToError } from "@vortex/shared";
+
 import type { IExtensionApi } from "../../../types/IExtensionContext";
 import type {
   IHealthCheckResult,
@@ -27,17 +29,17 @@ export interface IInstalledModEntry {
  * dir lookup. Filesystem walks happen in `buildModCheckContext`, not here.
  */
 export function enumerateInstalledMods(api: IExtensionApi): IInstalledModEntry[] {
-  const state: any = api.getState();
+  const state = api.getState();
   const gameId = activeGameId(state);
   if (!gameId) {
     return [];
   }
-  const modsById = state.persistent?.mods?.[gameId] ?? {};
-  const stagingRoot = installPathForGame(state as any, gameId);
+  const modsById = state.persistent.mods[gameId] ?? {};
+  const stagingRoot = installPathForGame(state, gameId);
   if (!stagingRoot) {
     return [];
   }
-  return Object.entries(modsById).map(([modId, mod]: [string, any]) => ({
+  return Object.entries(modsById).map(([modId, mod]) => ({
     modId,
     stagingPath: path.join(stagingRoot, mod.installationPath ?? modId),
     attributes: mod.attributes ?? {},
@@ -122,12 +124,12 @@ export async function runPerModCheck(
       const ctx = await buildContext(entry);
       try {
         return await hc.checkMod(api, ctx);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return {
           checkId: hc.id,
           status: "error",
           severity: HealthCheckSeverity.Error,
-          message: `checkMod threw for ${entry.modId}: ${err.message ?? "unknown error"}`,
+          message: `checkMod threw for ${entry.modId}: ${unknownToError(err).message || "unknown error"}`,
           executionTime: 0,
           timestamp: new Date(),
         };
