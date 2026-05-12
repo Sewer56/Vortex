@@ -1,12 +1,20 @@
 name: Package
 
+# Nightly builds (scheduled or via nightly input) override: version is auto-derived,
+# codesigning is always true, releases are always false, artifacts always true with 2-day retention.
+
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: "The version to release (eg: 'v1.0.0')"
-        required: true
+        description: "The version to release (eg: 'v1.0.0'). Ignored when nightly is true."
+        required: false
         type: string
+      nightly:
+        description: "Nightly build? (auto-versioned, signed, no releases, 48h artifacts)"
+        required: false
+        type: boolean
+        default: false
       create-artifacts:
         description: "Create artifacts?"
         required: true
@@ -27,6 +35,8 @@ on:
         required: false
         type: boolean
         default: true
+  schedule:
+    - cron: "0 19 * * *" # Nightly at 19:00 UTC
 
 jobs:
   build:
@@ -47,11 +57,22 @@ jobs:
       - name: Show Inputs
         run: echo "${{ toJSON(github.event.inputs) }}"
 
+      - name: Read package version for nightly build
+        id: nightly-version
+        if: ${{ github.event_name == 'schedule' || inputs.nightly == true }}
+        shell: pwsh
+        run: |
+          $response = Invoke-RestMethod -Uri "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.ref_name }}/package.json"
+          $baseVersion = $response.version
+          $date = Get-Date -Format "yyyyMMdd"
+          $nightlyVersion = "${baseVersion}-nightly.${date}"
+          echo "version=$nightlyVersion" >> $env:GITHUB_OUTPUT
+
       - name: Set Outputs
         id: setOutputs
         shell: pwsh
         env:
-          InputVersion: ${{ inputs.version }}
+          InputVersion: ${{ (github.event_name == 'schedule' || inputs.nightly == true) && steps.nightly-version.outputs.version || inputs.version }}
           GITHUB_RUN_NUMBER: ${{ github.run_number }}
         run: |
           $semverRegex = '^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$'
@@ -133,15 +154,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
-      - name: Download Runtime Dependencies
-        run: pnpm -F @vortex/main run prepare:win
-
       - name: Create Signed Installer
-        if: ${{ inputs.use-codesigning == true }}
+        if: ${{ inputs.use-codesigning == true || github.event_name == 'schedule' || inputs.nightly == true }}
         run: pnpm run package
 
       - name: Create Unsigned Installer
-        if: ${{ inputs.use-codesigning == false }}
+        if: ${{ inputs.use-codesigning == false && github.event_name != 'schedule' && inputs.nightly != true }}
         run: pnpm run package:nosign
 
       - name: Validate Package Creation
@@ -164,7 +182,7 @@ jobs:
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3.0.0
-        if: ${{ inputs.release == true }}
+        if: ${{ inputs.release == true && github.event_name != 'schedule' && inputs.nightly != true }}
         with:
           files: |
             ./dist/vortex-setup-*.*.*.exe 
@@ -178,7 +196,7 @@ jobs:
 
       - name: Create GitHub Release on Vortex-Staging
         uses: softprops/action-gh-release@v3.0.0
-        if: ${{ inputs.staging-release == true }}
+        if: ${{ inputs.staging-release == true && github.event_name != 'schedule' && inputs.nightly != true }}
         with:
           files: |
             ./dist/vortex-setup-*.*.*.exe 
@@ -194,18 +212,20 @@ jobs:
 
       - name: Create Unpacked Artifact
         uses: actions/upload-artifact@v7
-        if: ${{ inputs.create-artifacts == true }}
+        if: ${{ inputs.create-artifacts == true || github.event_name == 'schedule' || inputs.nightly == true }}
         with:
           name: ${{ steps.setOutputs.outputs.artifactNameUnpacked }}
           path: ./dist/win-unpacked
           if-no-files-found: error
+          retention-days: ${{ (github.event_name == 'schedule' || inputs.nightly == true) && 2 || 90 }}
 
       - name: Create Installer Artifact
         uses: actions/upload-artifact@v7
-        if: ${{ inputs.create-artifacts == true }}
+        if: ${{ inputs.create-artifacts == true || github.event_name == 'schedule' || inputs.nightly == true }}
         with:
           name: ${{ steps.setOutputs.outputs.artifactNameInstaller }}
           path: |
             ./dist/vortex-setup-*.*.*.exe
             ./dist/latest.yml
           if-no-files-found: error
+          retention-days: ${{ (github.event_name == 'schedule' || inputs.nightly == true) && 2 || 90 }}
