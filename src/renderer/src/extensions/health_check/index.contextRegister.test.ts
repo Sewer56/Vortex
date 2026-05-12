@@ -65,8 +65,8 @@ describe("context.registerHealthCheck", () => {
       },
     };
 
-    const mod = await import("./index");
-    const init = mod.default ?? (mod as any).init;
+    const mod = await import("./index.js");
+    const init = mod.default ?? (mod as unknown as { init: unknown }).init;
     if (typeof init !== "function") {
       throw new Error("health_check/index did not export init() as default");
     }
