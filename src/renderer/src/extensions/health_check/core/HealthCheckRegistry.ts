@@ -1,3 +1,5 @@
+import { unknownToError } from "@vortex/shared";
+
 import type { IExtensionApi } from "../../../types/IExtensionContext";
 import type {
   IHealthCheck,
@@ -22,7 +24,6 @@ export class HealthCheckRegistry {
   private mTriggerMap: Map<HealthCheckTrigger, Set<HealthCheckId>> = new Map();
   private mExecutionQueue: Set<HealthCheckId> = new Set();
   private mApi: IExtensionApi;
-  private mResults: Map<HealthCheckId, IHealthCheckResult> = new Map();
 
   constructor(api: IExtensionApi) {
     this.mApi = api;
@@ -114,9 +115,7 @@ export class HealthCheckRegistry {
         }
       });
 
-      // Remove from main map
       this.mHealthChecks.delete(checkId);
-      this.mResults.delete(checkId);
 
       log("debug", "Health check unregistered", { id: checkId });
     }
@@ -171,11 +170,16 @@ export class HealthCheckRegistry {
 
       const hc = entry.healthCheck;
       const checkPromise = isModHealthCheck(hc) ? runPerModCheck(hc, api) : hc.check(api);
-      const result = await Promise.race([checkPromise, timeoutPromise]);
+      const rawResult = await Promise.race([checkPromise, timeoutPromise]);
 
-      result.checkId = checkId;
-      result.timestamp = new Date();
-      result.executionTime = Date.now() - startTime;
+      // Don't mutate the object the extension returned — it may be frozen, a
+      // shared cache, or referenced elsewhere. Build a fresh result instead.
+      const result: IHealthCheckResult = {
+        ...rawResult,
+        checkId,
+        timestamp: new Date(),
+        executionTime: Date.now() - startTime,
+      };
 
       if (entry.healthCheck.cacheDuration && entry.healthCheck.cacheDuration > 0) {
         entry.cachedUntil = new Date(Date.now() + entry.healthCheck.cacheDuration);
@@ -183,9 +187,7 @@ export class HealthCheckRegistry {
 
       entry.lastResult = result;
       entry.lastExecuted = new Date();
-      this.mResults.set(checkId, result);
 
-      // Dispatch result to Redux so UI can access it
       if (this.mApi.store) {
         this.mApi.store.dispatch(setHealthCheckResult(checkId, result));
       }
@@ -199,7 +201,7 @@ export class HealthCheckRegistry {
 
       return result;
     } catch (error) {
-      const err = error as Error;
+      const err = unknownToError(error);
       const errorResult: IHealthCheckResult = {
         checkId,
         status: "error",
@@ -213,9 +215,7 @@ export class HealthCheckRegistry {
 
       entry.lastResult = errorResult;
       entry.lastExecuted = new Date();
-      this.mResults.set(checkId, errorResult);
 
-      // Dispatch error result to Redux so UI can access it
       if (this.mApi.store) {
         this.mApi.store.dispatch(setHealthCheckResult(checkId, errorResult));
       }
@@ -270,8 +270,10 @@ export class HealthCheckRegistry {
    */
   public getResults(): { [checkId in HealthCheckId]?: IHealthCheckResult } {
     const resultsObj: { [checkId in HealthCheckId]?: IHealthCheckResult } = {};
-    this.mResults.forEach((result, checkId) => {
-      resultsObj[checkId] = result;
+    this.mHealthChecks.forEach((entry, checkId) => {
+      if (entry.lastResult) {
+        resultsObj[checkId] = entry.lastResult;
+      }
     });
     return resultsObj;
   }
@@ -280,7 +282,6 @@ export class HealthCheckRegistry {
    * Clear all cached results
    */
   public clearResults(): void {
-    this.mResults.clear();
     this.mHealthChecks.forEach((entry) => {
       entry.lastResult = undefined;
       entry.lastExecuted = undefined;
