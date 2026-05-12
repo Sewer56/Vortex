@@ -7,6 +7,8 @@ export * from "./IComponentContext";
 export * from "./IDialog";
 export * from "./IExtensionContext";
 export * from "./IGame";
+export * from "./IHealthCheck";
+export * from "./IInstallerSpec";
 export * from "./IModifiers";
 export * from "./INotification";
 export * from "./IState";

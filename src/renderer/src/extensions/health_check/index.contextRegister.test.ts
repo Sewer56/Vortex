@@ -29,8 +29,7 @@ import {
 } from "../../types/IHealthCheck";
 
 describe("context.registerHealthCheck", () => {
-  test("buffers a registration before once() and assigns the function", async () => {
-    // Minimal stub context that captures registerHealthCheck + once callback.
+  test("is wired synchronously during init and routes registrations directly", async () => {
     let onceCallback: (() => void) | undefined;
     const stub: any = {
       registerReducer: vi.fn(),
@@ -46,8 +45,6 @@ describe("context.registerHealthCheck", () => {
       },
     };
 
-    // Import the health_check extension. May have static imports of UI views; we
-    // accept that the import side-effects load but should not throw.
     const mod = await import("./index");
     const init = mod.default ?? (mod as any).init;
     if (typeof init !== "function") {
@@ -57,26 +54,49 @@ describe("context.registerHealthCheck", () => {
 
     expect(typeof stub.registerHealthCheck).toBe("function");
 
-    // Register an IHealthCheck before once() fires — should buffer without throwing.
-    stub.registerHealthCheck({
-      id: "external",
-      name: "external",
-      description: "",
-      category: HealthCheckCategory.Mods,
-      severity: HealthCheckSeverity.Info,
-      triggers: [HealthCheckTrigger.Manual],
-      check: async () => ({
-        checkId: "external",
-        status: "passed",
+    // Register before once() fires — must not throw; the registry exists from
+    // the top of init(), so this routes directly.
+    expect(() => {
+      stub.registerHealthCheck({
+        id: "external",
+        name: "external",
+        description: "",
+        category: HealthCheckCategory.Mods,
         severity: HealthCheckSeverity.Info,
-        message: "ok",
-        executionTime: 0,
-        timestamp: new Date(0),
-      }),
-    });
+        triggers: [HealthCheckTrigger.Manual],
+        check: async () => ({
+          checkId: "external",
+          status: "passed",
+          severity: HealthCheckSeverity.Info,
+          message: "ok",
+          executionTime: 0,
+          timestamp: new Date(0),
+        }),
+      });
+    }).not.toThrow();
 
-    // Fire once() — buffer should drain into the (real) registry without error.
+    // once() still fires for legacy-adapter + triggers setup.
     expect(onceCallback).toBeDefined();
     expect(() => onceCallback!()).not.toThrow();
+
+    // Registration after once() also routes successfully.
+    expect(() => {
+      stub.registerHealthCheck({
+        id: "post-once",
+        name: "post-once",
+        description: "",
+        category: HealthCheckCategory.Mods,
+        severity: HealthCheckSeverity.Info,
+        triggers: [HealthCheckTrigger.Manual],
+        check: async () => ({
+          checkId: "post-once",
+          status: "passed",
+          severity: HealthCheckSeverity.Info,
+          message: "ok",
+          executionTime: 0,
+          timestamp: new Date(0),
+        }),
+      });
+    }).not.toThrow();
   });
 });

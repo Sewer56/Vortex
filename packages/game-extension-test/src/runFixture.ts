@@ -62,12 +62,18 @@ export async function runFixture(
     return typeof out === "string" ? Buffer.from(out, "utf8") : out;
   });
 
-  const checkResult = await ext.healthCheck.checkMod(api, modCtx);
-  if (checkResult.status === "failed" || checkResult.status === "error") {
-    return {
-      kind: "failed",
-      issues: [`${checkResult.severity}: ${checkResult.message}`],
-    };
+  const issues: string[] = [];
+  const messages: string[] = [];
+  for (const hc of ext.healthChecks) {
+    const checkResult = await hc.checkMod(api, modCtx);
+    if (checkResult.status === "failed" || checkResult.status === "error") {
+      issues.push(`${hc.id} (${checkResult.severity}): ${checkResult.message}`);
+    } else {
+      messages.push(`${hc.id}: ${checkResult.message}`);
+    }
   }
-  return { kind: "passed", modCheckMessage: checkResult.message };
+  if (issues.length > 0) {
+    return { kind: "failed", issues };
+  }
+  return { kind: "passed", modCheckMessage: messages.join("; ") };
 }

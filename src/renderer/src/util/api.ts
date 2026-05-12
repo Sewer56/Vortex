@@ -90,6 +90,14 @@ import getVortexPath from "./getVortexPath";
 import github from "./github";
 import type { TFunction } from "./i18n";
 import { getCurrentLanguage } from "./i18n";
+import {
+  buildCopyInstructions,
+  compileStopPatterns,
+  declareInstallers,
+  findCommonRootDir,
+  makeInstallerFromSpec,
+  matchesAnyStopPattern,
+} from "./installerHelpers";
 import lazyRequire from "./lazyRequire";
 import local from "./local";
 import makeReactive from "./makeReactive";
@@ -153,16 +161,19 @@ export {
   bbcodePreProcess,
   bbcodeToHTML,
   bbcodeToReact,
+  buildCopyInstructions,
   bytesToString,
   calculateFolderSize,
   Campaign,
   checksum,
   convertGameIdReverse,
+  compileStopPatterns,
   copyFileAtomic,
   copyRecursive,
   ConcurrencyLimiter,
   Content,
   CycleError,
+  declareInstallers,
   DataInvalid,
   Debouncer,
   deBOM,
@@ -173,6 +184,7 @@ export {
   // extend is renderer-only, available via renderer/controls/ComponentEx
   extractExeIcon,
   fileMD5,
+  findCommonRootDir,
   findDownloadByRef,
   findModByRef,
   GameNotFound,
@@ -203,6 +215,7 @@ export {
   lazyRequire,
   local,
   lookupFromDownload,
+  makeInstallerFromSpec,
   makeModReference,
   coerceToSemver,
   makeNormalizingDict,

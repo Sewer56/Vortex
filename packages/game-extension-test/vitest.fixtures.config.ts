@@ -1,4 +1,4 @@
-import * as path from "node:path";
+import { createRequire } from "node:module";
 
 import { defineConfig } from "vitest/config";
 
@@ -7,11 +7,12 @@ import { defineConfig } from "vitest/config";
  * Each stub is one `test()` per Nexus file, so vitest's default pool runs them
  * in parallel across worker threads.
  */
+const require_ = createRequire(import.meta.url);
+const VORTEX_API_MOCK = require_.resolve("vortex-api/testing");
+
 export default defineConfig({
   resolve: {
-    alias: {
-      "vortex-api": path.resolve(__dirname, "__mocks__/vortex-api.ts"),
-    },
+    alias: [{ find: /^vortex-api$/, replacement: VORTEX_API_MOCK }],
   },
   test: {
     environment: "node",

@@ -1,4 +1,5 @@
 import { loadExtension } from "./loadExtension";
+import { FileManifestHttpError, fetchFileManifest } from "./manifest";
 import { runFixture } from "./runFixture";
 import type { IFixture } from "./types";
 
@@ -21,9 +22,9 @@ export async function runOneFixture(args: {
 
   let manifest: string[];
   try {
-    manifest = await fetchManifest(args.fixture.contentPreviewLink);
+    manifest = await fetchFileManifest(args.fixture.contentPreviewLink);
   } catch (err: unknown) {
-    if (err instanceof Error && /HTTP 404/.test(err.message)) {
+    if (err instanceof FileManifestHttpError && err.status === 404) {
       return `manifest not on CDN: ${err.message}`;
     }
     throw err;
@@ -31,7 +32,6 @@ export async function runOneFixture(args: {
 
   const ext = await loadExtension(args.extensionDir);
 
-  // Apply descriptor-level skip heuristics before driving the installer.
   const skipHeuristics = ext.testDescriptor.skipHeuristics ?? [];
   for (const h of skipHeuristics) {
     if (h.matches(manifest)) {
@@ -51,78 +51,4 @@ export async function runOneFixture(args: {
     );
   }
   return undefined;
-}
-
-async function fetchManifest(contentPreviewLink: string): Promise<string[]> {
-  const url = encodeURI(contentPreviewLink);
-  const resp = await fetchWithRetry(url);
-  if (!resp.ok) {
-    // Non-retryable HTTP errors (404 etc.) — surface the final status so
-    // callers can decide whether to skip.
-    throw new Error(`fetchManifest: ${url} returned HTTP ${resp.status}`);
-  }
-  const tree = (await resp.json()) as IPreviewNode;
-  const out: string[] = [];
-  collectFiles(tree, out);
-  return out;
-}
-
-/**
- * `fetch` with retry on transient failures:
- *   - HTTP 429 (rate-limited)
- *   - HTTP 5xx (server errors)
- *   - HTTP 408 (request timeout)
- *   - Network errors (fetch itself rejects: ECONNRESET, ENOTFOUND, abort, etc.)
- *
- * Non-retryable HTTP responses (404, 403, other 4xx) are returned as-is so the
- * caller can decide how to handle them. Up to `maxAttempts` total attempts
- * (default 4), exponential backoff 500ms * 2^attempt with up to 50% jitter,
- * capped at 10s per sleep.
- */
-async function fetchWithRetry(url: string, init?: RequestInit, maxAttempts = 4): Promise<Response> {
-  let lastErr: unknown;
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    try {
-      const resp = await fetch(url, init);
-      if (resp.ok) return resp;
-      if (!isRetryableStatus(resp.status)) return resp;
-      lastErr = new Error(`HTTP ${resp.status}`);
-    } catch (err: unknown) {
-      lastErr = err;
-    }
-    if (attempt === maxAttempts - 1) break;
-    const base = 500 * 2 ** attempt;
-    const jitter = Math.random() * base * 0.5;
-    await sleep(Math.min(base + jitter, 10_000));
-  }
-  // Exhausted retries — synthesize an error response so callers don't need
-  // a second error path; throw if it was a network error.
-  if (lastErr instanceof Error && !/HTTP \d/.test(lastErr.message)) {
-    throw lastErr;
-  }
-  throw lastErr ?? new Error(`fetchWithRetry: ${url} failed after ${maxAttempts} attempts`);
-}
-
-function isRetryableStatus(status: number): boolean {
-  return status === 408 || status === 429 || (status >= 500 && status < 600);
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-interface IPreviewNode {
-  path?: string;
-  type?: "directory" | "file";
-  children?: IPreviewNode[];
-}
-
-function collectFiles(node: IPreviewNode, out: string[]): void {
-  if (node.type === "file" && typeof node.path === "string") {
-    out.push(node.path);
-    return;
-  }
-  if (node.children) {
-    for (const child of node.children) collectFiles(child, out);
-  }
 }

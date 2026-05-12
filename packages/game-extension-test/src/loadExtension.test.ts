@@ -22,6 +22,7 @@ describe("loadExtension", () => {
 
   test("exposes diagnostic", async () => {
     const ext = await loadExtension(FIXTURE_DIR);
-    expect(ext.healthCheck?.id).toBe("fake-check");
+    expect(ext.healthChecks).toHaveLength(1);
+    expect(ext.healthChecks[0]?.id).toBe("fake-check");
   });
 });

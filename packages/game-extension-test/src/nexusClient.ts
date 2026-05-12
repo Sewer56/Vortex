@@ -1,6 +1,9 @@
 import Nexus from "@nexusmods/nexus-api";
 import { RateLimiter } from "limiter";
 
+import { fetchFileManifest } from "./manifest";
+import { withRetry } from "./retry";
+
 export interface INexusClient {
   listMostPopular(gameDomain: string, limit: number): Promise<INexusModSummary[]>;
   listMostRecent(gameDomain: string, limit: number): Promise<INexusModSummary[]>;
@@ -46,71 +49,9 @@ export interface INexusFileSummary {
   contentPreviewLink: string;
 }
 
-// ---------------------------------------------------------------------------
-// Internal helpers
-// ---------------------------------------------------------------------------
-
-interface IPreviewNode {
-  path?: string;
-  name?: string;
-  type?: "directory" | "file";
-  size?: string;
-  children?: IPreviewNode[];
-}
-
-function collectFiles(node: IPreviewNode, out: string[]): void {
-  if (node.type === "file" && typeof node.path === "string") {
-    out.push(node.path);
-    return;
-  }
-  if (node.children) {
-    for (const child of node.children) collectFiles(child, out);
-  }
-}
-
-/** Pause for `ms` milliseconds. */
-const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
-
-/**
- * Wraps a call with exponential back-off + jitter on transient failures:
- *   - HTTP 408, 429, and 5xx responses
- *   - Network errors with no status (fetch-level rejections: ECONNRESET,
- *     ENOTFOUND, AbortError, etc.)
- *
- * Up to `maxRetries` retries, base delay 1 s, cap 30 s per sleep.
- */
-async function withRetry<T>(fn: () => Promise<T>, maxRetries = 3): Promise<T> {
-  let lastError: unknown;
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      return await fn();
-    } catch (err: unknown) {
-      lastError = err;
-      const status =
-        typeof err === "object" && err !== null && "statusCode" in err
-          ? (err as { statusCode: number }).statusCode
-          : typeof err === "object" && err !== null && "status" in err
-            ? (err as { status: number }).status
-            : undefined;
-
-      const transient =
-        status === undefined || status === 408 || status === 429 || (status >= 500 && status < 600);
-      if (!transient || attempt === maxRetries) {
-        throw err;
-      }
-
-      // Exponential back-off: 1 s, 2 s, 4 s … with up-to-50 % jitter.
-      const base = 1000 * Math.pow(2, attempt);
-      const jitter = Math.random() * base * 0.5;
-      await sleep(Math.min(base + jitter, 30_000));
-    }
-  }
-  throw lastError;
-}
-
-// ---------------------------------------------------------------------------
-// Factory
-// ---------------------------------------------------------------------------
+// SDK calls go through api.nexusmods.com, which is rate-limited; use longer
+// backoff than the unmetered CDN fetches (see `manifest.ts`).
+const SDK_RETRY = { maxAttempts: 4, baseDelayMs: 1000, maxDelayMs: 30_000 } as const;
 
 export function createNexusClient(apiKey: string): INexusClient {
   // ~25 requests per second
@@ -130,7 +71,7 @@ export function createNexusClient(apiKey: string): INexusClient {
   async function call<T>(fn: (nexus: Nexus) => Promise<T>): Promise<T> {
     await limiter.removeTokens(1);
     const nexus = await getNexus();
-    return withRetry(() => fn(nexus));
+    return withRetry(() => fn(nexus), SDK_RETRY);
   }
 
   return {
@@ -174,34 +115,51 @@ export function createNexusClient(apiKey: string): INexusClient {
       const out: INexusModSummary[] = [];
       let offset = 0;
       // The SDK doesn't expose a raw GraphQL request method on the typed
-      // surface, so we use the apikey header directly against /v2/graphql.
+      // surface, so we hit /v2/graphql directly. Wrapped in withRetry to
+      // match the protection the SDK-routed calls get via `call()`.
       while (true) {
-        await limiter.removeTokens(1);
-        const resp = await fetch("https://api.nexusmods.com/v2/graphql", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            APIKEY: apiKey,
-          },
-          body: JSON.stringify({
-            query:
-              "query($domain: String!, $count: Int!, $offset: Int!) {" +
-              " mods(filter: { filter: [{ gameDomainName: { value: $domain, op: EQUALS } }] }, count: $count, offset: $offset) {" +
-              "   totalCount nodes { modId name }" +
-              " } }",
-            variables: { domain: gameDomain, count: pageSize, offset },
-          }),
-        });
-        if (!resp.ok) {
-          throw new Error(`listAllMods: HTTP ${resp.status}`);
-        }
-        const data = (await resp.json()) as {
-          data?: { mods?: { totalCount?: number; nodes?: Array<{ modId: number; name: string }> } };
-          errors?: Array<{ message: string }>;
-        };
-        if (data.errors?.length) {
-          throw new Error(`listAllMods GraphQL: ${data.errors.map((e) => e.message).join("; ")}`);
-        }
+        const data = await withRetry(async () => {
+          await limiter.removeTokens(1);
+          const resp = await fetch("https://api.nexusmods.com/v2/graphql", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              APIKEY: apiKey,
+            },
+            body: JSON.stringify({
+              query:
+                "query($domain: String!, $count: Int!, $offset: Int!) {" +
+                " mods(filter: { filter: [{ gameDomainName: { value: $domain, op: EQUALS } }] }, count: $count, offset: $offset) {" +
+                "   totalCount nodes { modId name }" +
+                " } }",
+              variables: { domain: gameDomain, count: pageSize, offset },
+            }),
+          });
+          if (!resp.ok) {
+            // Tag with `status` so withRetry only retries 408/429/5xx.
+            const err = Object.assign(new Error(`listAllMods: HTTP ${resp.status}`), {
+              status: resp.status,
+            });
+            throw err;
+          }
+          const json = (await resp.json()) as {
+            data?: {
+              mods?: { totalCount?: number; nodes?: Array<{ modId: number; name: string }> };
+            };
+            errors?: Array<{ message: string }>;
+          };
+          if (json.errors?.length) {
+            // GraphQL semantic errors arrive over a 200 response; tag with
+            // a non-retryable status so withRetry fails fast.
+            const err = Object.assign(
+              new Error(`listAllMods GraphQL: ${json.errors.map((e) => e.message).join("; ")}`),
+              { status: 400 },
+            );
+            throw err;
+          }
+          return json;
+        }, SDK_RETRY);
+
         const page = data.data?.mods?.nodes ?? [];
         for (const m of page) out.push({ modId: m.modId, name: m.name ?? "" });
         const total = data.data?.mods?.totalCount ?? 0;
@@ -278,24 +236,6 @@ export function createNexusClient(apiKey: string): INexusClient {
       }));
     },
 
-    // ------------------------------------------------------------------
-    // getFileManifest – fetches IFileInfo.content_preview_link and flattens
-    // the tree into a list of file paths.
-    // ------------------------------------------------------------------
-    getFileManifest: async (contentPreviewLink: string): Promise<string[]> => {
-      if (!contentPreviewLink) {
-        throw new Error("getFileManifest: empty content_preview_link");
-      }
-      const url = encodeURI(contentPreviewLink);
-      await limiter.removeTokens(1);
-      const resp = await fetch(url);
-      if (!resp.ok) {
-        throw new Error(`getFileManifest: ${url} returned HTTP ${resp.status}`);
-      }
-      const tree = (await resp.json()) as IPreviewNode;
-      const out: string[] = [];
-      collectFiles(tree, out);
-      return out;
-    },
+    getFileManifest: (contentPreviewLink: string) => fetchFileManifest(contentPreviewLink),
   };
 }

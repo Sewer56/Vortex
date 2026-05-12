@@ -16,7 +16,8 @@
     "minimist": "catalog:",
     "tsx": "^4.7.0",
     "typescript": "catalog:",
-    "vitest": "catalog:"
+    "vitest": "catalog:",
+    "vortex-api": "workspace:*"
   },
   "nx": {
     "tags": [

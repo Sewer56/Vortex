@@ -30,15 +30,12 @@ let legacyAdapter: LegacyTestAdapter | null = null;
 let healthCheckApi: IHealthCheckApi | null = null;
 
 function init(context: IExtensionContext): boolean {
-  // Pending registrations buffered until the registry exists (created in context.once).
-  const pendingChecks: Array<IHealthCheck | IModHealthCheck> = [];
+  // Create the registry up front so registerHealthCheck routes directly
+  // through it — no buffering, no two-phase setup.
+  registry = new HealthCheckRegistry(context.api);
 
   context.registerHealthCheck = (hc: IHealthCheck | IModHealthCheck) => {
-    if (registry !== null) {
-      registry.register(hc);
-    } else {
-      pendingChecks.push(hc);
-    }
+    registry!.register(hc);
   };
 
   // Register session reducer for health check state (registered in both main and renderer)
@@ -66,16 +63,10 @@ function init(context: IExtensionContext): boolean {
   });
 
   context.once(() => {
-    // Create local registry for health checks
-    registry = new HealthCheckRegistry(context.api);
-    for (const hc of pendingChecks) {
-      registry.register(hc);
-    }
-    pendingChecks.length = 0;
-    legacyAdapter = new LegacyTestAdapter(registry, context.api);
+    legacyAdapter = new LegacyTestAdapter(registry!, context.api);
 
     // Create health check API
-    healthCheckApi = createHealthCheckApi(registry, legacyAdapter, context.api);
+    healthCheckApi = createHealthCheckApi(registry!, legacyAdapter, context.api);
 
     setupAutomaticTriggers(context.api, healthCheckApi);
 

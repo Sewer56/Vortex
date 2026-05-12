@@ -1,76 +1,19 @@
-import path from "path";
-
-import { fs, util } from "vortex-api";
+import { util } from "vortex-api";
 import type { types } from "vortex-api";
-import { parseStringPromise } from "xml2js";
 
-import { healthCheck } from "./diagnostic";
-import { installDocumentation, testDocumentation } from "./installers/documentationInstaller";
-import { installDropIn, testDropIn } from "./installers/dropInInstaller";
-import { installSavegame, testSavegame } from "./installers/savegameInstaller";
-import { installSavePatch, testSavePatch } from "./installers/savePatchInstaller";
-import { installSweetFx, testSweetFx } from "./installers/sweetFxInstaller";
-import { installUtility, testUtility } from "./installers/utilityInstaller";
+import { healthChecks } from "./diagnostic";
+import {
+  XREBIRTH_CONTENT_XML_PRIORITY,
+  XREBIRTH_GAME_ID,
+  XREBIRTH_INSTALLER_SPECS,
+  installContentXml,
+  testContentXml,
+} from "./installers";
 import { XREBIRTH_STOP_PATTERNS } from "./stopPatterns";
-
-function testSupported(files: string[], gameId: string): Promise<types.ISupportedResult> {
-  if (gameId !== "xrebirth") {
-    return Promise.resolve({ supported: false, requiredFiles: [] });
-  }
-
-  const contentPath = files.find((file) => path.basename(file) === "content.xml");
-  return Promise.resolve({
-    supported: contentPath !== undefined,
-    requiredFiles: contentPath !== undefined ? [contentPath] : [],
-  });
-}
-
-async function install(files: string[], destinationPath: string): Promise<types.IInstallResult> {
-  const contentPath = files.find((file) => path.basename(file) === "content.xml")!;
-  const basePath = path.dirname(contentPath);
-
-  const data = await fs.readFileAsync(path.join(destinationPath, contentPath), {
-    encoding: "utf8",
-  });
-
-  let parsed: Record<string, unknown>;
-  try {
-    parsed = await parseStringPromise(data);
-  } catch (err) {
-    throw new util.DataInvalid("content.xml invalid: " + err.message);
-  }
-
-  const attrs = (parsed?.content as Record<string, unknown>)?.$ as
-    | Record<string, string>
-    | undefined;
-
-  const outputPath = attrs?.id;
-  if (outputPath === undefined) {
-    throw new util.DataInvalid("invalid or unsupported content.xml");
-  }
-
-  const attrInstructions: types.IInstruction[] = Object.entries({
-    customFileName: attrs?.name?.trim(),
-    description: attrs?.description,
-    sticky: attrs?.save === "true",
-    author: attrs?.author,
-    version: attrs?.version,
-  }).map(([key, value]) => ({ type: "attribute" as const, key, value }));
-
-  const copyInstructions: types.IInstruction[] = files
-    .filter((file) => file.startsWith(basePath + path.sep) && !file.endsWith(path.sep))
-    .map((file) => ({
-      type: "copy" as const,
-      source: file,
-      destination: path.join(outputPath, file.substring(basePath.length + 1)),
-    }));
-
-  return { instructions: attrInstructions.concat(copyInstructions) };
-}
 
 function main(context: types.IExtensionContext): boolean {
   context.registerGame({
-    id: "xrebirth",
+    id: XREBIRTH_GAME_ID,
     name: "X Rebirth",
     queryArgs: { steam: "2870" },
     queryModPath: () => "extensions",
@@ -80,20 +23,21 @@ function main(context: types.IExtensionContext): boolean {
     details: { stopPatterns: XREBIRTH_STOP_PATTERNS },
   });
 
-  context.registerInstaller("xrebirth", 50, testSupported, install);
-  // Distinct-shape installers ahead of the generic drop-in: each tags a
-  // modType so a future registerModType call can route deployment.
-  context.registerInstaller("xrebirth-savegame", 60, testSavegame, installSavegame);
-  context.registerInstaller("xrebirth-shader-injector", 65, testSweetFx, installSweetFx);
-  context.registerInstaller("xrebirth-utility", 70, testUtility, installUtility);
-  context.registerInstaller("xrebirth-dropin", 75, testDropIn, installDropIn);
-  // Save-edit / MD patch XMLs: archives containing only .xml files at root.
-  context.registerInstaller("xrebirth-save-patch", 80, testSavePatch, installSavePatch);
-  // Documentation last: only fires if no other installer matched and every
-  // file is a doc-type.
-  context.registerInstaller("xrebirth-documentation", 90, testDocumentation, installDocumentation);
+  // The canonical content.xml installer is hand-written: it parses XML and
+  // emits attribute instructions, which the declarative table can't express.
+  context.registerInstaller(
+    XREBIRTH_GAME_ID,
+    XREBIRTH_CONTENT_XML_PRIORITY,
+    testContentXml,
+    installContentXml,
+  );
 
-  (context as any).registerHealthCheck?.(healthCheck);
+  // Everything else is a config-driven match → copy → setmodtype.
+  util.declareInstallers(context, XREBIRTH_GAME_ID, XREBIRTH_INSTALLER_SPECS);
+
+  for (const check of healthChecks) {
+    context.registerHealthCheck(check);
+  }
 
   return true;
 }

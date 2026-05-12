@@ -1,101 +1,166 @@
 import * as path from "node:path";
 
+import { types, util } from "vortex-api";
+
+import { XREBIRTH_MOD_TYPES } from "./installers";
 import { XREBIRTH_STOP_PATTERNS } from "./stopPatterns";
 
+const TAGGED_NON_CONTENT_XML = new Set<string>([
+  XREBIRTH_MOD_TYPES.savegame,
+  XREBIRTH_MOD_TYPES.shaderInjector,
+  XREBIRTH_MOD_TYPES.utility,
+  XREBIRTH_MOD_TYPES.documentation,
+  XREBIRTH_MOD_TYPES.savePatch,
+]);
+
+const CATEGORY = types.HealthCheckCategory.Mods;
+const TRIGGERS: types.HealthCheckTrigger[] = [
+  types.HealthCheckTrigger.ModsChanged,
+  types.HealthCheckTrigger.Manual,
+];
+const SEVERITY_INFO = types.HealthCheckSeverity.Info;
+const SEVERITY_WARNING = types.HealthCheckSeverity.Warning;
+
+// Hoisted: the stopPatterns list is constant, so compile once instead of every
+// check invocation.
+const STOP_PATTERN_REGEXES = util.compileStopPatterns(XREBIRTH_STOP_PATTERNS);
+
+function isContentXmlMod(mod: types.IMod): boolean {
+  return mod.files.some((f) => path.basename(f).toLowerCase() === "content.xml");
+}
+
+function passed(checkId: string, message: string, startedAt: number): types.IHealthCheckResult {
+  return {
+    checkId,
+    status: "passed",
+    severity: SEVERITY_INFO,
+    message,
+    executionTime: Date.now() - startedAt,
+    timestamp: new Date(),
+  };
+}
+
+function warning(
+  checkId: string,
+  message: string,
+  details: string,
+  startedAt: number,
+): types.IHealthCheckResult {
+  return {
+    checkId,
+    status: "warning",
+    severity: SEVERITY_WARNING,
+    message,
+    details,
+    executionTime: Date.now() - startedAt,
+    timestamp: new Date(),
+  };
+}
+
 /**
- * Minimal mirror of the framework's IModHealthCheck shape, kept local to avoid
- * dragging the renderer source tree into this extension's typecheck. The
- * harness consumes this object structurally; if/when the framework types are
- * re-exported via `vortex-api`, the imports can be restored.
+ * Fails when an install produced zero files — typically means the installer's
+ * filter logic ate every entry (e.g. directory-only filter mis-applied).
  */
-type Severity = "info" | "warning" | "error" | "critical";
-type Status = "passed" | "failed" | "warning" | "error";
-
-interface IModCheckContext {
-  modId: string;
-  files: string[];
-  readFile: (p: string) => Promise<Buffer>;
-  attributes: Record<string, unknown>;
-}
-
-interface IModHealthCheck {
-  id: string;
-  name: string;
-  description: string;
-  category: "mods";
-  severity: Severity;
-  triggers: string[];
-  checkMod: (
-    api: unknown,
-    mod: IModCheckContext,
-  ) => Promise<{
-    checkId: string;
-    status: Status;
-    severity: Severity;
-    message: string;
-    details?: string;
-    executionTime: number;
-    timestamp: Date;
-  }>;
-}
-
-export const healthCheck: IModHealthCheck = {
-  id: "xrebirth-mod-install-valid",
-  name: "X Rebirth — mod install valid",
-  description: "Verifies that installed X Rebirth mods have the expected structure.",
-  category: "mods",
-  severity: "warning",
-  triggers: ["mods-changed", "manual"],
+const modHasFilesCheck: types.IModHealthCheck = {
+  id: "xrebirth-mod-has-files",
+  name: "X Rebirth — mod has files",
+  description: "Verifies that the installer produced at least one file.",
+  category: CATEGORY,
+  severity: SEVERITY_WARNING,
+  triggers: TRIGGERS,
   checkMod: async (_api, mod) => {
     const startedAt = Date.now();
-    const issues: string[] = [];
-
     if (mod.files.length === 0) {
-      issues.push("installer produced no files");
-    }
-
-    const hasContentXml = mod.files.some((f) => path.basename(f).toLowerCase() === "content.xml");
-    const stopPatternRegexes = XREBIRTH_STOP_PATTERNS.map((p) => new RegExp(p, "i"));
-    const matchesStopPattern = mod.files.some((f) => stopPatternRegexes.some((re) => re.test(f)));
-    const modType = mod.attributes.modType as string | undefined;
-    const TAGGED_NON_CONTENT_XML = new Set([
-      "xrebirth-savegame",
-      "xrebirth-shader-injector",
-      "xrebirth-utility",
-      "xrebirth-documentation",
-      "xrebirth-save-patch",
-    ]);
-    const taggedNonContentXml = modType !== undefined && TAGGED_NON_CONTENT_XML.has(modType);
-
-    if (hasContentXml) {
-      // content.xml mod: also require the customFileName attribute, since that's
-      // what the content.xml installer always sets.
-      if (mod.attributes.customFileName === undefined) {
-        issues.push("content.xml mod missing customFileName attribute");
-      }
-    } else if (!matchesStopPattern && !taggedNonContentXml) {
-      // Not a content.xml mod, not matching any stop pattern, and not tagged
-      // as a known non-content-xml shape (savegame/shader). Reject.
-      issues.push(
-        "install output has no content.xml, no stop-pattern matches, " +
-          "and no recognised modType (not a recognisable X Rebirth mod shape)",
+      return warning(
+        "xrebirth-mod-has-files",
+        "Installer produced no files",
+        "An installer matched but emitted zero file instructions.",
+        startedAt,
       );
     }
-
-    const severity: Severity = issues.length === 0 ? "info" : "warning";
-    const status: Status = issues.length === 0 ? "passed" : "warning";
-
-    return {
-      checkId: "xrebirth-mod-install-valid",
-      status,
-      severity,
-      message:
-        issues.length === 0
-          ? "X Rebirth mod is well-formed"
-          : `X Rebirth mod has ${issues.length} issue(s)`,
-      details: issues.join("\n"),
-      executionTime: Date.now() - startedAt,
-      timestamp: new Date(),
-    };
+    return passed("xrebirth-mod-has-files", "Install output has at least one file", startedAt);
   },
 };
+
+/**
+ * For content.xml mods: the install path always emits a `customFileName`
+ * attribute from the XML's `name` field. Its absence after install indicates
+ * the install function didn't run end-to-end (e.g. silent throw).
+ */
+const contentXmlCustomFileNameCheck: types.IModHealthCheck = {
+  id: "xrebirth-content-xml-customFileName",
+  name: "X Rebirth — content.xml carries customFileName",
+  description: "Verifies that content.xml mods record their declared name.",
+  category: CATEGORY,
+  severity: SEVERITY_WARNING,
+  triggers: TRIGGERS,
+  checkMod: async (_api, mod) => {
+    const startedAt = Date.now();
+    if (!isContentXmlMod(mod)) {
+      return passed(
+        "xrebirth-content-xml-customFileName",
+        "Not a content.xml mod; check not applicable",
+        startedAt,
+      );
+    }
+    if (mod.attributes.customFileName === undefined) {
+      return warning(
+        "xrebirth-content-xml-customFileName",
+        "content.xml mod missing customFileName attribute",
+        "The content.xml installer always emits customFileName from the XML's name field. " +
+          "Its absence means the install path didn't complete.",
+        startedAt,
+      );
+    }
+    return passed(
+      "xrebirth-content-xml-customFileName",
+      "content.xml mod has customFileName",
+      startedAt,
+    );
+  },
+};
+
+/**
+ * The mod must look like *some* recognisable X Rebirth shape: a content.xml
+ * mod, a drop-in matching the game's stopPatterns, or one of the tagged
+ * non-content modTypes (savegame, utility, shader, etc.). Otherwise the
+ * installer matched something but it isn't actually X Rebirth content.
+ */
+const modShapeRecognisedCheck: types.IModHealthCheck = {
+  id: "xrebirth-mod-shape-recognised",
+  name: "X Rebirth — mod has a recognisable shape",
+  description:
+    "Verifies the install output is content.xml, matches stopPatterns, or is tagged with a known modType.",
+  category: CATEGORY,
+  severity: SEVERITY_WARNING,
+  triggers: TRIGGERS,
+  checkMod: async (_api, mod) => {
+    const startedAt = Date.now();
+    if (isContentXmlMod(mod)) {
+      return passed("xrebirth-mod-shape-recognised", "Recognised as content.xml mod", startedAt);
+    }
+    const modType = mod.attributes.modType as string | undefined;
+    if (modType !== undefined && TAGGED_NON_CONTENT_XML.has(modType)) {
+      return passed(
+        "xrebirth-mod-shape-recognised",
+        `Recognised by modType: ${modType}`,
+        startedAt,
+      );
+    }
+    if (mod.files.some((f) => STOP_PATTERN_REGEXES.some((re) => re.test(f)))) {
+      return passed("xrebirth-mod-shape-recognised", "Recognised by stopPatterns match", startedAt);
+    }
+    return warning(
+      "xrebirth-mod-shape-recognised",
+      "Install output has no recognisable X Rebirth shape",
+      "No content.xml, no stop-pattern matches, and no recognised modType.",
+      startedAt,
+    );
+  },
+};
+
+export const healthChecks: types.IModHealthCheck[] = [
+  modHasFilesCheck,
+  contentXmlCustomFileNameCheck,
+  modShapeRecognisedCheck,
+];

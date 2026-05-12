@@ -1,6 +1,6 @@
 import { describe, test, expect } from "vitest";
+import { fs } from "vortex-api/testing";
 
-import { fs } from "../__mocks__/vortex-api";
 import { buildMockApi } from "./mockApi";
 
 describe("mockApi", () => {

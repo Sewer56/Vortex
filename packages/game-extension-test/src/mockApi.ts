@@ -1,6 +1,6 @@
 import { vi } from "vitest";
+import { setReadFileResolver } from "vortex-api/testing";
 
-import { setReadFileResolver } from "../__mocks__/vortex-api";
 import type { IGameExtensionTestDescriptor, ISyntheticContext } from "./types";
 
 export interface IMockApi {

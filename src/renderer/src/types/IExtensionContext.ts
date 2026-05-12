@@ -52,6 +52,7 @@ import type { IBannerOptions } from "./IBannerOptions";
 import type { DialogType, IDialogResult } from "./IDialog";
 import type { IGame } from "./IGame";
 import type { IGameStore } from "./IGameStore";
+import type { IHealthCheck, IModHealthCheck } from "./IHealthCheck";
 import type { ILookupOptions, IModLookupResult } from "./IModLookupResult";
 import type { INotification, INotificationAction } from "./INotification";
 import type { IDiscoveryResult, IMod, IState } from "./IState";
@@ -1193,9 +1194,7 @@ export interface IExtensionContext {
    *
    * @memberOf IExtensionContext
    */
-  registerHealthCheck: (
-    healthCheck: import("./IHealthCheck").IHealthCheck | import("./IHealthCheck").IModHealthCheck,
-  ) => void;
+  registerHealthCheck: (healthCheck: IHealthCheck | IModHealthCheck) => void;
 
   /**
    * register a handler for archive types so the content of such archives is exposed to

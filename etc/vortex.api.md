@@ -458,6 +458,12 @@ function batchDispatch(store: Redux.Dispatch | Redux.Store, actions: Redux.Actio
 function bbcodeToHTML(input: string): string;
 
 // @public
+function buildCopyInstructions(files: readonly string[], opts: {
+    stripCommonRoot: boolean;
+    modType?: string;
+}): IInstallResult;
+
+// @public
 class Button_2 extends React_2.PureComponent<ButtonProps, {}> {
     // (undocumented)
     render(): JSX.Element;
@@ -672,6 +678,9 @@ class CollectionsInstallationStartedEvent implements MixpanelEvent {
     readonly properties: Record<string, any>;
 }
 
+// @public
+function compileStopPatterns(patterns: readonly string[]): RegExp[];
+
 // @public (undocumented)
 const completeMigration: reduxAct.ComplexActionCreator1<any, any, {}>;
 
@@ -791,6 +800,9 @@ function deBOM(input: string): string;
 class Debouncer extends GenericDebouncer<number, typeof window.setTimeout, typeof window.clearTimeout> {
     constructor(func: (...args: any[]) => Error | PromiseLike<void>, debounceMS: number, reset?: boolean, triggerImmediately?: boolean);
 }
+
+// @public
+function declareInstallers(context: IExtensionContext, gameId: string, specs: readonly IInstallerSpec[]): void;
 
 // @public
 function deepMerge(lhs: any, rhs: any): any;
@@ -995,6 +1007,9 @@ const finalizingProgress: ComplexActionCreator2<string, number, {
 id: string;
 progress: number;
 }, {}>;
+
+// @public
+function findCommonRootDir(files: readonly string[]): string | undefined;
 
 // @public (undocumented)
 function findDownloadByRef(reference: IReference, downloads: {
@@ -1479,6 +1494,66 @@ function getVortexPath(id: AppPath): string;
 
 // @public
 const hasCollectionActiveSession: (state: IState) => boolean;
+
+// @public (undocumented)
+enum HealthCheckCategory {
+    // (undocumented)
+    Game = "game",
+    // (undocumented)
+    Legacy = "legacy",
+    // (undocumented)
+    Mods = "mods",
+    // (undocumented)
+    Performance = "performance",
+    // (undocumented)
+    Requirements = "requirements",
+    // (undocumented)
+    System = "system",
+    // (undocumented)
+    Tools = "tools"
+}
+
+// @public (undocumented)
+type HealthCheckFixFunction = (api: IExtensionApi) => Promise<void>;
+
+// @public (undocumented)
+type HealthCheckFunction = (api: IExtensionApi) => Promise<IHealthCheckResult>;
+
+// @public (undocumented)
+enum HealthCheckSeverity {
+    // (undocumented)
+    Critical = "critical",
+    // (undocumented)
+    Error = "error",
+    // (undocumented)
+    Info = "info",
+    // (undocumented)
+    Warning = "warning"
+}
+
+// @public (undocumented)
+enum HealthCheckTrigger {
+    // (undocumented)
+    GameChanged = "game-changed",
+    // (undocumented)
+    LootUpdated = "loot-updated",
+    // (undocumented)
+    Manual = "manual",
+    // (undocumented)
+    ModsChanged = "mods-changed",
+    // (undocumented)
+    PluginsChanged = "plugins-changed",
+    // (undocumented)
+    ProfileChanged = "profile-changed",
+    // (undocumented)
+    ResultsChanged = "health-check-results-changed",
+    // (undocumented)
+    Scheduled = "scheduled",
+    // (undocumented)
+    SettingsChanged = "settings-changed",
+    // (undocumented)
+    Startup = "startup"
+}
 
 // @public
 interface IActionDefinition {
@@ -2246,8 +2321,6 @@ interface IExtensionContext {
     // Warning: (ae-forgotten-export) The symbol "GameVersionProviderFunc" needs to be exported by the entry point api.d.ts
     // Warning: (ae-forgotten-export) The symbol "IGameVersionProviderOptions" needs to be exported by the entry point api.d.ts
     registerGameVersionProvider?: (id: string, priority: number, supported: GameVersionProviderTest, getVersion: GameVersionProviderFunc, options?: IGameVersionProviderOptions) => void;
-    // Warning: (ae-forgotten-export) The symbol "IHealthCheck" needs to be exported by the entry point api.d.ts
-    // Warning: (ae-forgotten-export) The symbol "IModHealthCheck" needs to be exported by the entry point api.d.ts
     registerHealthCheck: (healthCheck: IHealthCheck | IModHealthCheck) => void;
     registerHistoryStack: (id: string, options: IHistoryStack) => void;
     registerInstaller: (id: string, priority: number, testSupported: TestSupported, install: InstallFunc) => void;
@@ -2488,6 +2561,74 @@ interface IGameStoreEntry {
 }
 
 // @public (undocumented)
+interface IHealthCheck {
+    // (undocumented)
+    cacheDuration?: number;
+    // (undocumented)
+    category: HealthCheckCategory;
+    // (undocumented)
+    check: HealthCheckFunction;
+    // (undocumented)
+    dependencies?: string[];
+    // (undocumented)
+    description: string;
+    // (undocumented)
+    extensionName?: string;
+    // (undocumented)
+    fix?: HealthCheckFixFunction;
+    // (undocumented)
+    id: string;
+    // (undocumented)
+    name: string;
+    // (undocumented)
+    severity: HealthCheckSeverity;
+    // (undocumented)
+    timeout?: number;
+    // (undocumented)
+    triggers: HealthCheckTrigger[];
+}
+
+// @public (undocumented)
+interface IHealthCheckEntry {
+    // (undocumented)
+    cachedUntil?: Date;
+    // (undocumented)
+    enabled: boolean;
+    // (undocumented)
+    healthCheck: IHealthCheck | IModHealthCheck | ILegacyTestAdapter;
+    // (undocumented)
+    lastExecuted?: Date;
+    // (undocumented)
+    lastResult?: IHealthCheckResult;
+}
+
+// @public (undocumented)
+interface IHealthCheckResult {
+    // (undocumented)
+    checkId: string;
+    // (undocumented)
+    details?: string;
+    // (undocumented)
+    executionTime: number;
+    // (undocumented)
+    fixAvailable?: boolean;
+    // (undocumented)
+    isLegacyTest?: boolean;
+    // (undocumented)
+    message: string;
+    // (undocumented)
+    metadata?: {
+        [key: string]: any;
+    };
+    // (undocumented)
+    severity: HealthCheckSeverity;
+    // (undocumented)
+    status: "passed" | "failed" | "warning" | "error";
+    // (undocumented)
+    timestamp: Date;
+}
+
+// @public (undocumented)
 interface IHistoryEvent {
     // (undocumented)
     data: any;
@@ -2566,6 +2707,49 @@ interface IInstallationDetails {
     modReference?: IModReference;
 }
 
+// @public
+interface IInstallerInstall {
+    stripCommonRoot: boolean;
+}
+
+// @public
+type IInstallerMatch = {
+    kind: "extensions";
+    list: readonly string[];
+    mode: InstallerMatchMode;
+} | {
+    kind: "regex";
+    patterns: readonly RegExp[];
+    mode: InstallerMatchMode;
+} | {
+    kind: "filename";
+    names: readonly string[];
+    mode: InstallerMatchMode;
+}
+/** Any file matches any of `game.details.stopPatterns` for the active game. */
+| {
+    kind: "stopPatterns";
+}
+/** Escape hatch: caller-supplied predicate over the (raw) file list. */
+| {
+    kind: "custom";
+    predicate: (files: string[]) => boolean;
+};
+
+// @public
+interface IInstallerSpec {
+    // (undocumented)
+    id: string;
+    // (undocumented)
+    install: IInstallerInstall;
+    // (undocumented)
+    match: IInstallerMatch;
+    // (undocumented)
+    modType?: string;
+    // (undocumented)
+    priority: number;
+}
+
 // @public (undocumented)
 interface IInstallResult {
     // (undocumented)
@@ -2614,6 +2798,18 @@ interface IItemRendererProps {
     loEntry: ILoadOrderEntry_2;
     // (undocumented)
     setRef?: (ref: any) => void;
+}
+
+// @public (undocumented)
+interface ILegacyTestAdapter extends IHealthCheck {
+    // (undocumented)
+    eventType: string;
+    // (undocumented)
+    fix?: HealthCheckFixFunction;
+    // (undocumented)
+    isLegacyTest: true;
+    // (undocumented)
+    originalCheck: CheckFunction;
 }
 
 // @public (undocumented)
@@ -2774,6 +2970,24 @@ interface IMod {
     // (undocumented)
     state: ModState;
     type: string;
+}
+
+// @public
+interface IModCheckContext {
+    // (undocumented)
+    attributes: Record<string, unknown>;
+    // (undocumented)
+    files: string[];
+    // (undocumented)
+    modId: string;
+    // (undocumented)
+    readFile: (path: string) => Promise<Buffer>;
+}
+
+// @public
+interface IModHealthCheck extends Omit<IHealthCheck, "check" | "fix"> {
+    // (undocumented)
+    checkMod: PerModCheckFunction;
 }
 
 // @public (undocumented)
@@ -2984,6 +3198,12 @@ interface INotificationState {
     // (undocumented)
     notifications: INotification[];
 }
+
+// @public
+type InstallerMatchMode = "any" | "all";
+
+// @public
+type InstallerSpecInstallFunc = (files: string[], destinationPath: string) => Promise<IInstallResult>;
 
 // @public (undocumented)
 type InstallFunc = (files: string[], destinationPath: string, gameId: string, progressDelegate: ProgressDelegate, choices?: any, unattended?: boolean, archivePath?: string, options?: IInstallationDetails) => PromiseLike<IInstallResult>;
@@ -3600,6 +3820,9 @@ function isFuzzyVersion(input: string): boolean;
 // @public (undocumented)
 const isLoggedIn: (state: IState) => boolean;
 
+// @public
+function isModHealthCheck(hc: IHealthCheck | IModHealthCheck | ILegacyTestAdapter): hc is IModHealthCheck;
+
 // @public (undocumented)
 function isPathValid(input: string, allowRelative?: boolean): boolean;
 
@@ -4213,6 +4436,12 @@ function makeFileWritableAsync(filePath: string): Promise_2<void>;
 // @public (undocumented)
 export function makeGetSelection(tableId: string): GetSelection;
 
+// @public
+function makeInstallerFromSpec(spec: IInstallerSpec, gameId: string): {
+    testSupported: TestSupported;
+    install: (files: string[]) => Promise<IInstallResult>;
+};
+
 // @public (undocumented)
 function makeModReference(mod: IMod): IReference;
 
@@ -4505,6 +4734,9 @@ paused: boolean;
 
 // @public (undocumented)
 type PayloadT<Type> = Type extends ComplexActionCreator<infer X> ? X : never;
+
+// @public (undocumented)
+type PerModCheckFunction = (api: IExtensionApi, mod: IModCheckContext) => Promise<IHealthCheckResult>;
 
 // @public
 type PersistingType = "global" | "game" | "profile";
@@ -5930,6 +6162,24 @@ declare namespace types {
         IModType,
         DirectoryCleaningMode,
         IGame,
+        isModHealthCheck,
+        HealthCheckCategory,
+        HealthCheckSeverity,
+        HealthCheckTrigger,
+        IHealthCheckResult,
+        HealthCheckFunction,
+        HealthCheckFixFunction,
+        IHealthCheck,
+        ILegacyTestAdapter,
+        IHealthCheckEntry,
+        IModCheckContext,
+        PerModCheckFunction,
+        IModHealthCheck,
+        InstallerMatchMode,
+        IInstallerMatch,
+        IInstallerInstall,
+        IInstallerSpec,
+        InstallerSpecInstallFunc,
         IModifiers,
         NotificationDismiss,
         INotificationAction,
@@ -6066,16 +6316,19 @@ declare namespace util {
         preProcess as bbcodePreProcess,
         bbcodeToHTML,
         renderBBCode as bbcodeToReact,
+        buildCopyInstructions,
         bytesToString,
         calculateFolderSize,
         Campaign,
         checksum,
         convertGameIdReverse,
+        compileStopPatterns,
         copyFileAtomic,
         copyRecursive,
         ConcurrencyLimiter,
         Content,
         CycleError,
+        declareInstallers,
         DataInvalid,
         Debouncer,
         deBOM,
@@ -6085,6 +6338,7 @@ declare namespace util {
         instance as epicGamesLauncher,
         extractExeIcon,
         fileMD5,
+        findCommonRootDir,
         findDownloadByRef,
         findModByRef,
         GameNotFound,
@@ -6115,6 +6369,7 @@ declare namespace util {
         lazyRequire,
         local,
         lookupFromDownload,
+        makeInstallerFromSpec,
         makeModReference,
         coerceToSemver,
         makeNormalizingDict,

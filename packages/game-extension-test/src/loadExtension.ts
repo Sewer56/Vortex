@@ -1,10 +1,64 @@
 import * as path from "node:path";
 
+import type { IGameExtensionTestDescriptor, IModCheckContext } from "./types";
+
+/**
+ * Subset of Vortex's `TestSupported` signature relevant to the harness — we
+ * only ever call it with `(files, gameId)`. The renderer's full type accepts
+ * an optional `details` arg that no test driver passes.
+ */
+export type HarnessTestSupported = (
+  files: string[],
+  gameId: string,
+) => Promise<{ supported: boolean; requiredFiles: string[] }>;
+
+/**
+ * Subset of Vortex's `InstallFunc` signature relevant to the harness. The
+ * production type takes 8 positional args (destination, gameId, progress, etc.)
+ * — we forward them all but only consume `{ instructions }` from the result.
+ */
+export type HarnessInstall = (
+  files: string[],
+  destinationPath: string,
+  gameId: string,
+  progressDelegate: (perc: number) => void,
+  choices: unknown,
+  unattended: boolean,
+  archivePath: string | undefined,
+  archiveOptions: Record<string, unknown>,
+) => Promise<{ instructions: Array<{ type: string; [key: string]: unknown }> }>;
+
 export interface IInstallerEntry {
   id: string;
   priority: number;
-  testSupported: (...args: any[]) => Promise<any>;
-  install: (...args: any[]) => Promise<any>;
+  testSupported: HarnessTestSupported;
+  install: HarnessInstall;
+}
+
+/**
+ * Per-mod healthcheck shape consumed by `runFixture`. Structural — kept local
+ * so the harness doesn't need a runtime dep on `vortex-api`. Mirrors
+ * `IModHealthCheck` from `src/renderer/src/types/IHealthCheck.ts`.
+ */
+export interface IHarnessModHealthCheck {
+  id: string;
+  checkMod: (
+    api: unknown,
+    modCtx: IModCheckContext,
+  ) => Promise<{
+    status: "passed" | "failed" | "warning" | "error";
+    severity: string;
+    message: string;
+    details?: string;
+  }>;
+}
+
+/** Minimal shape of the `IGame` object the extension passes to `registerGame`. */
+export interface IHarnessGame {
+  id: string;
+  name?: string;
+  details?: { stopPatterns?: readonly string[]; [key: string]: unknown };
+  [key: string]: unknown;
 }
 
 /**
@@ -14,14 +68,35 @@ export interface IInstallerEntry {
  */
 export interface ILoadedExtension {
   installers: IInstallerEntry[];
-  testDescriptor: any; // narrowed to IGameExtensionTestDescriptor at call sites
-  healthCheck?: any; // optional IModHealthCheck
+  testDescriptor: IGameExtensionTestDescriptor;
+  /** Each IModHealthCheck the extension exports from src/diagnostic.ts. */
+  healthChecks: IHarnessModHealthCheck[];
   gameId: string;
-  game: any; // the IGame-shaped object passed to context.registerGame
+  game: IHarnessGame;
+}
+
+interface IStubContext {
+  _installers: IInstallerEntry[];
+  _game: IHarnessGame | undefined;
+  registerGame: (game: IHarnessGame) => void;
+  registerInstaller: (
+    id: string,
+    priority: number,
+    testSupported: HarnessTestSupported,
+    install: HarnessInstall,
+  ) => void;
+  registerTest: (...args: unknown[]) => void;
+  registerHealthCheck: (...args: unknown[]) => void;
+  registerReducer: (...args: unknown[]) => void;
+  registerSettings: (...args: unknown[]) => void;
+  registerMainPage: (...args: unknown[]) => void;
+  registerAction: (...args: unknown[]) => void;
+  once: (cb: () => void) => void;
+  api: Record<string, unknown>;
 }
 
 export async function loadExtension(extensionDir: string): Promise<ILoadedExtension> {
-  const stubContext: any = makeStubContext();
+  const stubContext = makeStubContext();
   const indexPath = path.join(extensionDir, "src", "index.ts");
   const mod = await import(indexPath);
   const init = mod.default ?? mod.init;
@@ -37,15 +112,27 @@ export async function loadExtension(extensionDir: string): Promise<ILoadedExtens
     throw new Error(`Extension ${extensionDir} did not call registerGame`);
   }
 
-  const descriptorMod = await import(path.join(extensionDir, "src", "test-descriptor.ts"));
-  const diagnosticMod = await import(path.join(extensionDir, "src", "diagnostic.ts")).catch(
+  const descriptorMod = (await import(path.join(extensionDir, "src", "test-descriptor.ts"))) as {
+    testDescriptor?: IGameExtensionTestDescriptor;
+  };
+  const diagnosticMod = (await import(path.join(extensionDir, "src", "diagnostic.ts")).catch(
     () => ({}),
-  );
+  )) as { healthChecks?: unknown };
 
-  if (descriptorMod.testDescriptor && !(diagnosticMod as any).healthCheck) {
+  if (!descriptorMod.testDescriptor) {
     throw new Error(
-      `Extension ${extensionDir} exports testDescriptor but has no healthCheck ` +
-        `(expected at src/diagnostic.ts: export const healthCheck = ...). ` +
+      `Extension ${extensionDir} does not export a testDescriptor ` +
+        `(expected at src/test-descriptor.ts: export const testDescriptor = ...). ` +
+        `The harness can't drive fixtures without one.`,
+    );
+  }
+
+  const healthChecks = resolveHealthChecks(diagnosticMod);
+  if (healthChecks.length === 0) {
+    throw new Error(
+      `Extension ${extensionDir} exports testDescriptor but has no health checks ` +
+        `(expected at src/diagnostic.ts: export const healthChecks = [...] ` +
+        `with at least one IModHealthCheck). ` +
         `Without a healthcheck the harness would silently pass every fixture.`,
     );
   }
@@ -57,20 +144,27 @@ export async function loadExtension(extensionDir: string): Promise<ILoadedExtens
   return {
     installers,
     testDescriptor: descriptorMod.testDescriptor,
-    healthCheck: diagnosticMod.healthCheck,
+    healthChecks,
     gameId: stubContext._game.id,
     game: stubContext._game,
   };
 }
 
-function makeStubContext(): any {
-  const ctx: any = {
-    _installers: [] as IInstallerEntry[],
+function resolveHealthChecks(diagnosticMod: { healthChecks?: unknown }): IHarnessModHealthCheck[] {
+  if (Array.isArray(diagnosticMod.healthChecks)) {
+    return diagnosticMod.healthChecks as IHarnessModHealthCheck[];
+  }
+  return [];
+}
+
+function makeStubContext(): IStubContext {
+  const ctx: IStubContext = {
+    _installers: [],
     _game: undefined,
-    registerGame(game: any) {
+    registerGame(game) {
       ctx._game = game;
     },
-    registerInstaller(id: string, priority: number, testSupported: any, install: any) {
+    registerInstaller(id, priority, testSupported, install) {
       ctx._installers.push({ id, priority, testSupported, install });
     },
     registerTest() {
@@ -91,12 +185,12 @@ function makeStubContext(): any {
     registerAction() {
       /* noop */
     },
-    once(_cb: () => void) {
+    once(_cb) {
       /* deferred init not exercised in tests */
     },
     api: {
       /* per-fixture mockApi is supplied separately */
-    } as any,
+    },
   };
   return ctx;
 }

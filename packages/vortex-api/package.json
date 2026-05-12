@@ -13,6 +13,10 @@
     ".": {
       "types": "./lib/api.d.ts",
       "default": "./lib/api.js"
+    },
+    "./testing": {
+      "types": "./src/testing/index.ts",
+      "default": "./src/testing/index.ts"
     }
   },
   "files": [
@@ -64,7 +68,8 @@
     "re-reselect": "catalog:",
     "react": "catalog:",
     "redux": "catalog:",
-    "reselect": "catalog:"
+    "reselect": "catalog:",
+    "vitest": "catalog:"
   },
   "peerDependencies": {
     "@types/bluebird": "catalog:",

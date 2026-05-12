@@ -8,8 +8,8 @@ import type {
   IModHealthCheck,
 } from "../../../types/IHealthCheck";
 import { HealthCheckSeverity } from "../../../types/IHealthCheck";
-import { activeGameId } from "../../../util/selectors";
 import { log } from "../../../util/log";
+import { activeGameId } from "../../../util/selectors";
 import { installPathForGame } from "../../mod_management/selectors";
 
 /** Map an installed mod's redux state row to an IModCheckContext. */
@@ -47,9 +47,7 @@ export function enumerateInstalledMods(api: IExtensionApi): IInstalledModEntry[]
 /**
  * Build an IModCheckContext for one installed mod by walking its staging dir.
  */
-export async function buildModCheckContext(
-  entry: IInstalledModEntry,
-): Promise<IModCheckContext> {
+export async function buildModCheckContext(entry: IInstalledModEntry): Promise<IModCheckContext> {
   const files = await walkRelative(entry.stagingPath);
   return {
     modId: entry.modId,
@@ -88,13 +86,23 @@ async function walkRelative(root: string): Promise<string[]> {
  * Run a per-mod healthcheck across all installed mods for the active game and
  * fold the per-mod results into a single IHealthCheckResult (worst severity
  * wins; per-mod messages are concatenated into `details`).
+ *
+ * `deps` is a seam for unit tests; production callers pass nothing.
  */
+export interface IPerModCheckDeps {
+  enumerate?: typeof enumerateInstalledMods;
+  buildContext?: typeof buildModCheckContext;
+}
+
 export async function runPerModCheck(
   hc: IModHealthCheck,
   api: IExtensionApi,
+  deps: IPerModCheckDeps = {},
 ): Promise<IHealthCheckResult> {
+  const enumerate = deps.enumerate ?? enumerateInstalledMods;
+  const buildContext = deps.buildContext ?? buildModCheckContext;
   const startedAt = Date.now();
-  const mods = enumerateInstalledMods(api);
+  const mods = enumerate(api);
   if (mods.length === 0) {
     return {
       checkId: hc.id,
@@ -107,15 +115,19 @@ export async function runPerModCheck(
   }
   const perMod = await Promise.all(
     mods.map(async (entry): Promise<IHealthCheckResult> => {
+      // Context construction (FS walk, state lookup) is harness-controlled — if
+      // it throws, that's a bug in this module, not the extension's check.
+      // Let it propagate so the registry sees the real stack. Only wrap the
+      // extension-supplied `checkMod` call.
+      const ctx = await buildContext(entry);
       try {
-        const ctx = await buildModCheckContext(entry);
         return await hc.checkMod(api, ctx);
       } catch (err: any) {
         return {
           checkId: hc.id,
           status: "error",
           severity: HealthCheckSeverity.Error,
-          message: `Per-mod check failed for ${entry.modId}: ${err.message ?? "unknown error"}`,
+          message: `checkMod threw for ${entry.modId}: ${err.message ?? "unknown error"}`,
           executionTime: 0,
           timestamp: new Date(),
         };
@@ -142,9 +154,7 @@ export function aggregateResults(
       worst = r.severity;
     }
   }
-  const failed = results.filter(
-    (r) => r.status === "failed" || r.status === "error",
-  );
+  const failed = results.filter((r) => r.status === "failed" || r.status === "error");
   const warning = results.filter((r) => r.status === "warning");
   let status: IHealthCheckResult["status"] = "passed";
   if (failed.length > 0) status = "failed";
