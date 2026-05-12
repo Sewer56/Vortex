@@ -24,6 +24,22 @@ export interface IStoreQuery {
   prefer?: number;
 }
 
+/** Normalized form of one store's IGame.queryArgs entry. */
+export type IQueryArgEntry = string | IStoreQuery | IStoreQuery[];
+
+/**
+ * Normalize the polymorphic form `IGame.queryArgs` accepts (string app ID,
+ * single query, or array) into a single array of IStoreQuery. Callers that
+ * iterate per-store entries should funnel through this so the three forms
+ * are handled in one place.
+ */
+export function normalizeStoreQuery(raw: IQueryArgEntry | undefined): IStoreQuery[] {
+  if (raw === undefined) return [];
+  if (typeof raw === "string") return [{ id: raw }];
+  if (Array.isArray(raw)) return raw;
+  return [raw];
+}
+
 class GameStoreHelper {
   private mApi: IExtensionApi;
   private mStores: IGameStore[];
@@ -124,14 +140,10 @@ class GameStoreHelper {
   }
 
   public find = toBlue(
-    async (query: {
-      [storeId: string]: string | IStoreQuery | IStoreQuery[];
-    }): Promise<IGameStoreEntry[]> => {
+    async (query: { [storeId: string]: IQueryArgEntry }): Promise<IGameStoreEntry[]> => {
       const results: IGameStoreEntry[] = [];
       for (const storeId of Object.keys(query)) {
-        const raw = query[storeId];
-        const storeQueries: IStoreQuery[] =
-          typeof raw === "string" ? [{ id: raw }] : Array.isArray(raw) ? raw : [raw];
+        const storeQueries = normalizeStoreQuery(query[storeId]);
         let prioOffset = 0;
         for (const storeQuery of storeQueries) {
           let result: IGameStoreEntry | undefined = undefined;

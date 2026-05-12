@@ -67,7 +67,7 @@ import {
   withTrackedActivity,
 } from "./errorHandling";
 import extractExeIcon from "./exeIcon";
-import GameStoreHelper from "./GameStoreHelper";
+import GameStoreHelper, { normalizeStoreQuery } from "./GameStoreHelper";
 
 /**
  * @deprecated Use window.api for IPC communication from renderer to main process.
@@ -189,6 +189,7 @@ export {
   findModByRef,
   GameNotFound,
   GameStoreHelper,
+  normalizeStoreQuery,
   generateCollectionSessionId,
   getActivator,
   getApplication,

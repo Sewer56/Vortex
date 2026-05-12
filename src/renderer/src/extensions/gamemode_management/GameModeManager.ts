@@ -17,7 +17,7 @@ import { getNormalizeFunc } from "../../util/api";
 import { ProcessCanceled, SetupError, UserCanceled } from "../../util/CustomErrors";
 import EpicGamesLauncher from "../../util/EpicGamesLauncher";
 import * as fs from "../../util/fs";
-import GameStoreHelper from "../../util/GameStoreHelper";
+import GameStoreHelper, { normalizeStoreQuery } from "../../util/GameStoreHelper";
 import { log } from "../../util/log";
 import { activeProfile, discoveryByGame } from "../../util/selectors";
 import Steam from "../../util/Steam";
@@ -464,17 +464,8 @@ class GameModeManager {
   };
 
   private extractSteamId(game: IGame): string | undefined {
-    const steamEntry = game.queryArgs?.steam;
-    if (steamEntry === undefined) {
-      return undefined;
-    }
-    if (typeof steamEntry === "string") {
-      return steamEntry;
-    }
-    if (Array.isArray(steamEntry)) {
-      return steamEntry[0]?.id;
-    }
-    return steamEntry.id;
+    const [first] = normalizeStoreQuery(game.queryArgs?.steam);
+    return first?.id;
   }
 
   private storeTool(tool: ITool): IToolStored {

@@ -2440,7 +2440,7 @@ interface IGame extends ITool {
     modTypes?: IModType[];
     overrides?: string[];
     queryArgs?: {
-        [storeId: string]: string | IStoreQuery | IStoreQuery[];
+        [storeId: string]: IQueryArgEntry;
     };
     queryModPath: (gamePath: string) => string;
     requiresCleanup?: boolean;
@@ -3410,6 +3410,9 @@ interface IProgressWithProfile {
     // (undocumented)
     profile?: IProgressProfile;
 }
+
+// @public
+type IQueryArgEntry = string | IStoreQuery | IStoreQuery[];
 
 // @public
 interface IReducerSpec<T = {
@@ -4636,6 +4639,9 @@ function nexusModsURL(reqPath: string[], options?: INexusURLOptions): string;
 
 // @public (undocumented)
 type Normalize = (input: string) => string;
+
+// @public
+function normalizeStoreQuery(raw: IQueryArgEntry | undefined): IStoreQuery[];
 
 // @public (undocumented)
 class NotFound extends Error {
@@ -6021,6 +6027,7 @@ declare namespace types {
         TFunction,
         IDiscoveredTool,
         IExecInfo,
+        IQueryArgEntry,
         IStoreQuery,
         IGameStoreEntry,
         GameEntryNotFound,
@@ -6343,6 +6350,7 @@ declare namespace util {
         findModByRef,
         GameNotFound,
         instance_2 as GameStoreHelper,
+        normalizeStoreQuery,
         generateCollectionSessionId,
         getActivator,
         getApplication,
