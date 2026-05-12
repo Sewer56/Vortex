@@ -8,6 +8,12 @@ interface IPreviewNode {
   children?: IPreviewNode[];
 }
 
+/**
+ * CDN fetches are unmetered, so retry faster than the SDK-routed calls in
+ * `nexusClient.ts`.
+ */
+export const CDN_RETRY = { maxAttempts: 4, baseDelayMs: 500, maxDelayMs: 10_000 } as const;
+
 function collectFiles(node: IPreviewNode, out: string[]): void {
   if (node.type === "file" && typeof node.path === "string") {
     out.push(node.path);
@@ -58,7 +64,7 @@ export async function fetchFileManifest(
       }
       return r;
     },
-    { maxAttempts: opts.maxAttempts ?? 4, baseDelayMs: 500, maxDelayMs: 10_000 },
+    { ...CDN_RETRY, maxAttempts: opts.maxAttempts ?? CDN_RETRY.maxAttempts },
   );
 
   if (!resp.ok) {

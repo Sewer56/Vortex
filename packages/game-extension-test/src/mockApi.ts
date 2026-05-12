@@ -2,9 +2,10 @@ import { vi } from "vitest";
 import { setReadFileResolver } from "vortex-api/testing";
 
 import type { IGameExtensionTestDescriptor, ISyntheticContext } from "./types";
+import { lastSegment } from "./util";
 
 export interface IMockApi {
-  api: any; // IExtensionApi shape
+  api: unknown; // IExtensionApi shape; consumed via duck-typing inside extensions
   readFileCalls: { path: string }[];
 }
 
@@ -29,7 +30,7 @@ export function buildMockApi(
     return typeof out === "string" ? Buffer.from(out, "utf8") : out;
   });
 
-  const api: any = {
+  const api = {
     getState: () => ({
       persistent: { mods: {} },
       settings: { mods: { installPath: {} } },
@@ -43,9 +44,4 @@ export function buildMockApi(
   };
 
   return { api, readFileCalls: calls };
-}
-
-function lastSegment(p: string): string {
-  const idx = Math.max(p.lastIndexOf("/"), p.lastIndexOf("\\"));
-  return idx === -1 ? p : p.slice(idx + 1);
 }

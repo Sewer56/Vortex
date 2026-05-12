@@ -1,14 +1,17 @@
-import { describe, test, expect, vi } from "vitest";
+import { describe, test, expect, vi, afterEach } from "vitest";
 
 import { FileManifestHttpError, fetchFileManifest } from "./manifest";
 
 describe("fetchFileManifest", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   test("rejects empty link without hitting the network", async () => {
     const fetchSpy = vi.fn();
     vi.stubGlobal("fetch", fetchSpy);
     await expect(fetchFileManifest("")).rejects.toThrow(/empty/i);
     expect(fetchSpy).not.toHaveBeenCalled();
-    vi.unstubAllGlobals();
   });
 
   test("flattens preview tree into file paths", async () => {
@@ -34,7 +37,6 @@ describe("fetchFileManifest", () => {
     );
     const out = await fetchFileManifest("https://example.test/preview.json");
     expect(out).toEqual(["Mod/content.xml", "Mod/sub/data.bin"]);
-    vi.unstubAllGlobals();
   });
 
   test("throws FileManifestHttpError on 404 (non-retryable)", async () => {
@@ -45,7 +47,6 @@ describe("fetchFileManifest", () => {
     await expect(fetchFileManifest("https://example.test/missing.json")).rejects.toBeInstanceOf(
       FileManifestHttpError,
     );
-    vi.unstubAllGlobals();
   });
 
   test("retries on 503 then succeeds", async () => {
@@ -67,6 +68,5 @@ describe("fetchFileManifest", () => {
     const out = await fetchFileManifest("https://example.test/preview.json", { maxAttempts: 3 });
     expect(out).toEqual(["ok.txt"]);
     expect(calls).toBe(2);
-    vi.unstubAllGlobals();
   });
 });

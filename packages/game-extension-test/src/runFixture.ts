@@ -25,8 +25,11 @@ export async function runFixture(
     let supported: { supported: boolean; requiredFiles: string[] };
     try {
       supported = await inst.testSupported(manifest, ext.gameId);
-    } catch (err: any) {
-      return { kind: "failed", issues: [`testSupported (${inst.id}) threw: ${err.message}`] };
+    } catch (err: unknown) {
+      return {
+        kind: "failed",
+        issues: [`testSupported (${inst.id}) threw: ${errorMessage(err)}`],
+      };
     }
     if (supported.supported) {
       chosen = inst;
@@ -37,7 +40,7 @@ export async function runFixture(
     return { kind: "rejected", reason: "no installer accepted the file" };
   }
 
-  let result: { instructions: any[] };
+  let result: { instructions: Array<{ type: string; [key: string]: unknown }> };
   try {
     result = await chosen.install(
       manifest,
@@ -51,8 +54,8 @@ export async function runFixture(
       undefined,
       {},
     );
-  } catch (err: any) {
-    return { kind: "failed", issues: [`install (${chosen.id}) threw: ${err.message}`] };
+  } catch (err: unknown) {
+    return { kind: "failed", issues: [`install (${chosen.id}) threw: ${errorMessage(err)}`] };
   }
 
   const modCtx = materializeInstall(ctx.manifestId, result.instructions, async (basename) => {
@@ -76,4 +79,9 @@ export async function runFixture(
     return { kind: "failed", issues };
   }
   return { kind: "passed", modCheckMessage: messages.join("; ") };
+}
+
+function errorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  return String(err);
 }

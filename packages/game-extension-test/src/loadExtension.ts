@@ -75,6 +75,11 @@ export interface ILoadedExtension {
   game: IHarnessGame;
 }
 
+/**
+ * Subset of the renderer's IExtensionContext the harness honors. Everything
+ * else is captured by a Proxy as a no-op so an extension calling, say,
+ * `context.registerReducer(...)` during init() doesn't crash the loader.
+ */
 interface IStubContext {
   _installers: IInstallerEntry[];
   _game: IHarnessGame | undefined;
@@ -85,14 +90,9 @@ interface IStubContext {
     testSupported: HarnessTestSupported,
     install: HarnessInstall,
   ) => void;
-  registerTest: (...args: unknown[]) => void;
-  registerHealthCheck: (...args: unknown[]) => void;
-  registerReducer: (...args: unknown[]) => void;
-  registerSettings: (...args: unknown[]) => void;
-  registerMainPage: (...args: unknown[]) => void;
-  registerAction: (...args: unknown[]) => void;
   once: (cb: () => void) => void;
   api: Record<string, unknown>;
+  [hook: string]: unknown;
 }
 
 export async function loadExtension(extensionDir: string): Promise<ILoadedExtension> {
@@ -115,9 +115,20 @@ export async function loadExtension(extensionDir: string): Promise<ILoadedExtens
   const descriptorMod = (await import(path.join(extensionDir, "src", "test-descriptor.ts"))) as {
     testDescriptor?: IGameExtensionTestDescriptor;
   };
-  const diagnosticMod = (await import(path.join(extensionDir, "src", "diagnostic.ts")).catch(
-    () => ({}),
-  )) as { healthChecks?: unknown };
+
+  // Tolerate a missing diagnostic.ts (extension hasn't added one yet), but
+  // surface any other error so syntax mistakes don't silently become
+  // "no health checks registered."
+  const diagnosticPath = path.join(extensionDir, "src", "diagnostic.ts");
+  let diagnosticMod: { healthChecks?: unknown } = {};
+  try {
+    diagnosticMod = (await import(diagnosticPath)) as { healthChecks?: unknown };
+  } catch (err: unknown) {
+    const code = (err as { code?: string } | null)?.code;
+    if (code !== "ERR_MODULE_NOT_FOUND" && code !== "MODULE_NOT_FOUND") {
+      throw err;
+    }
+  }
 
   if (!descriptorMod.testDescriptor) {
     throw new Error(
@@ -158,39 +169,30 @@ function resolveHealthChecks(diagnosticMod: { healthChecks?: unknown }): IHarnes
 }
 
 function makeStubContext(): IStubContext {
-  const ctx: IStubContext = {
+  const base: IStubContext = {
     _installers: [],
     _game: undefined,
     registerGame(game) {
-      ctx._game = game;
+      base._game = game;
     },
     registerInstaller(id, priority, testSupported, install) {
-      ctx._installers.push({ id, priority, testSupported, install });
-    },
-    registerTest() {
-      /* legacy noop */
-    },
-    registerHealthCheck() {
-      /* runtime registration is a noop in tests */
-    },
-    registerReducer() {
-      /* noop */
-    },
-    registerSettings() {
-      /* noop */
-    },
-    registerMainPage() {
-      /* noop */
-    },
-    registerAction() {
-      /* noop */
+      base._installers.push({ id, priority, testSupported, install });
     },
     once(_cb) {
       /* deferred init not exercised in tests */
     },
-    api: {
-      /* per-fixture mockApi is supplied separately */
-    },
+    api: {},
   };
-  return ctx;
+  return new Proxy(base, {
+    get(target, prop, receiver) {
+      const known = Reflect.get(target, prop, receiver);
+      if (known !== undefined) return known;
+      if (typeof prop === "string" && prop.startsWith("register")) {
+        return () => {
+          /* unknown register hook — silently accepted */
+        };
+      }
+      return undefined;
+    },
+  });
 }

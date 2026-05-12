@@ -1,11 +1,4 @@
-import { describe, test, expect, vi, beforeEach } from "vitest";
-
-// ---------------------------------------------------------------------------
-// Stub @nexusmods/nexus-api before importing the module under test.
-// The implementation uses `Nexus.create(...)` (static factory), so we mock the
-// default export as a class with a static `create` method that returns an
-// instance of the fake.
-// ---------------------------------------------------------------------------
+import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 
 const fakeNexus = {
   getTrending: vi.fn((_g: string) =>
@@ -51,7 +44,6 @@ vi.mock("@nexusmods/nexus-api", () => {
   };
 });
 
-// Also stub `limiter` so the rate-limiter doesn't actually delay tests.
 vi.mock("limiter", () => {
   return {
     RateLimiter: class {
@@ -72,9 +64,9 @@ describe("nexusClient", () => {
     client = createNexusClient("test-key");
   });
 
-  // -------------------------------------------------------------------------
-  // listMostPopular
-  // -------------------------------------------------------------------------
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
 
   test("listMostPopular calls getTrending and truncates to limit", async () => {
     const mods = await client.listMostPopular("xrebirth", 2);
@@ -89,10 +81,6 @@ describe("nexusClient", () => {
     expect(mods).toHaveLength(3);
   });
 
-  // -------------------------------------------------------------------------
-  // listMostRecent
-  // -------------------------------------------------------------------------
-
   test("listMostRecent calls getLatestAdded and maps modId/name", async () => {
     const mods = await client.listMostRecent("xrebirth", 5);
     expect(fakeNexus.getLatestAdded).toHaveBeenCalledWith("xrebirth");
@@ -106,14 +94,9 @@ describe("nexusClient", () => {
     expect(mods[0]?.modId).toBe(10);
   });
 
-  // -------------------------------------------------------------------------
-  // listOldest
-  // -------------------------------------------------------------------------
-
   test("listOldest calls getLatestUpdated and reverses the list", async () => {
     const mods = await client.listOldest("xrebirth", 5);
     expect(fakeNexus.getLatestUpdated).toHaveBeenCalledWith("xrebirth");
-    // Implementation reverses getLatestUpdated, so U2 (mod_id 101) comes first.
     expect(mods[0]?.modId).toBe(101);
     expect(mods[1]?.modId).toBe(100);
   });
@@ -123,10 +106,6 @@ describe("nexusClient", () => {
     expect(mods).toHaveLength(1);
     expect(mods[0]?.modId).toBe(101);
   });
-
-  // -------------------------------------------------------------------------
-  // listModFiles
-  // -------------------------------------------------------------------------
 
   test("listModFiles calls getModFiles with (modId, gameDomain)", async () => {
     await client.listModFiles("xrebirth", 42);
@@ -143,10 +122,6 @@ describe("nexusClient", () => {
     });
     expect(files[0]?.uploadedAt).toEqual(new Date(0));
   });
-
-  // -------------------------------------------------------------------------
-  // listAllMods – paginated GraphQL fetch.
-  // -------------------------------------------------------------------------
 
   test("listAllMods paginates until totalCount reached", async () => {
     let call = 0;
@@ -177,7 +152,6 @@ describe("nexusClient", () => {
       { modId: 3, name: "C" },
     ]);
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    vi.unstubAllGlobals();
   });
 
   test("listAllMods surfaces GraphQL errors", async () => {
@@ -190,12 +164,7 @@ describe("nexusClient", () => {
       }),
     );
     await expect(client.listAllMods("xrebirth")).rejects.toThrow(/boom/);
-    vi.unstubAllGlobals();
   });
-
-  // -------------------------------------------------------------------------
-  // getFileManifest – fetches preview JSON and flattens into file paths.
-  // -------------------------------------------------------------------------
 
   test("getFileManifest flattens preview tree to file paths", async () => {
     const tree = {
@@ -228,7 +197,6 @@ describe("nexusClient", () => {
     const paths = await client.getFileManifest("https://example.test/file.json");
     expect(paths).toEqual(["Mod/content.xml", "Mod/sub/data.bin"]);
     expect(fetchMock).toHaveBeenCalledWith("https://example.test/file.json");
-    vi.unstubAllGlobals();
   });
 
   test("getFileManifest throws on empty link", async () => {
@@ -243,6 +211,5 @@ describe("nexusClient", () => {
     await expect(client.getFileManifest("https://example.test/missing.json")).rejects.toThrow(
       /HTTP 404/,
     );
-    vi.unstubAllGlobals();
   });
 });

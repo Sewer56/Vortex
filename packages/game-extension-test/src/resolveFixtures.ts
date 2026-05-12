@@ -1,5 +1,6 @@
 import type { INexusClient } from "./nexusClient";
 import type { IFixture, IGameExtensionTestDescriptor } from "./types";
+import { getErrorStatus } from "./util";
 
 /** Mod-level row before per-file expansion. */
 interface IModRef {
@@ -36,7 +37,7 @@ export async function resolveFixtures(
   const d = descriptor.nexusGameDomain;
   if (descriptor.fixtures.all) {
     for (const m of await client.listAllMods(d)) {
-      tryAddMod({ origin: "mostPopular", modId: m.modId });
+      tryAddMod({ origin: "all", modId: m.modId });
     }
   }
   if (descriptor.fixtures.mostPopular > 0) {
@@ -88,10 +89,7 @@ export async function resolveFixtures(
         const files = await client.listModFiles(d, ref.modId);
         return { ref, files };
       } catch (err: unknown) {
-        const status =
-          typeof err === "object" && err !== null && "statusCode" in err
-            ? (err as { statusCode: number }).statusCode
-            : undefined;
+        const status = getErrorStatus(err);
         if (status === 403 || status === 404) {
           return { ref, files: [] };
         }

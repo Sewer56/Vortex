@@ -56,7 +56,12 @@ export interface ISyntheticContext {
 
 /** A single fixture row resolved from the Nexus API. */
 export interface IFixture {
-  origin: "mostPopular" | "mostRecent" | "oldest" | { type: "collection"; collectionId: string };
+  origin:
+    | "all"
+    | "mostPopular"
+    | "mostRecent"
+    | "oldest"
+    | { type: "collection"; collectionId: string };
   modId: number;
   fileId: number;
   fileName: string;

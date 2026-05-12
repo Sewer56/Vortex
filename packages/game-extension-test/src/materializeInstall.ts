@@ -1,4 +1,5 @@
 import type { IModCheckContext } from "./types";
+import { lastSegment } from "./util";
 
 /**
  * Convert an installer's IInstruction[] output into the IModCheckContext that
@@ -35,9 +36,4 @@ export function materializeInstall(
     readFile: (rel) => readFileForBasename(lastSegment(rel)),
     attributes,
   };
-}
-
-function lastSegment(p: string): string {
-  const idx = Math.max(p.lastIndexOf("/"), p.lastIndexOf("\\"));
-  return idx === -1 ? p : p.slice(idx + 1);
 }

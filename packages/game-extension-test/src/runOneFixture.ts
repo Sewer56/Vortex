@@ -45,9 +45,9 @@ export async function runOneFixture(args: {
   }
   if (outcome.kind === "rejected") {
     throw new Error(
-      `installer rejected file ${args.fixture.fileName} (modId=${args.fixture.modId}, fileId=${args.fixture.fileId}). ` +
+      `[${ext.gameId}] installer rejected file ${args.fixture.fileName} (modId=${args.fixture.modId}, fileId=${args.fixture.fileId}). ` +
         `If this is intentional, add a more specific installer that supports this file shape; ` +
-        `otherwise the X Rebirth-specific installer's testSupported needs to accept it.`,
+        `otherwise an existing installer's testSupported needs to accept it.`,
     );
   }
   return undefined;

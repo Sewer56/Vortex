@@ -9,9 +9,8 @@ export interface INexusClient {
   listMostRecent(gameDomain: string, limit: number): Promise<INexusModSummary[]>;
   listOldest(gameDomain: string, limit: number): Promise<INexusModSummary[]>;
   /**
-   * Enumerate every mod for the game via paginated GraphQL.
-   * Returns one row per mod. Caller is responsible for the per-mod `listModFiles`
-   * follow-up.
+   * Enumerate every mod for the game via paginated GraphQL. Caller is
+   * responsible for the per-mod `listModFiles` follow-up.
    */
   listAllMods(gameDomain: string): Promise<INexusModSummary[]>;
   listCollections(gameDomain: string): Promise<INexusCollectionSummary[]>;
@@ -19,9 +18,8 @@ export interface INexusClient {
   listModFiles(gameDomain: string, modId: number): Promise<INexusFileSummary[]>;
   /**
    * Fetch the content-preview JSON for a file and flatten it into the list of
-   * file paths inside the archive. The URL comes from
-   * `IFileInfo.content_preview_link` (exposed on `INexusFileSummary`).
-   * Throws if the URL is empty or the fetch fails.
+   * file paths inside the archive. Throws if the URL is empty or the fetch
+   * fails.
    */
   getFileManifest(contentPreviewLink: string): Promise<string[]>;
 }
@@ -49,16 +47,66 @@ export interface INexusFileSummary {
   contentPreviewLink: string;
 }
 
-// SDK calls go through api.nexusmods.com, which is rate-limited; use longer
-// backoff than the unmetered CDN fetches (see `manifest.ts`).
+/** api.nexusmods.com is rate-limited; longer backoff than the unmetered CDN fetches in `manifest.ts`. */
 const SDK_RETRY = { maxAttempts: 4, baseDelayMs: 1000, maxDelayMs: 30_000 } as const;
 
-export function createNexusClient(apiKey: string): INexusClient {
-  // ~25 requests per second
-  const limiter = new RateLimiter({ tokensPerInterval: 25, interval: "second" });
+/** ~25 requests per second matches the published Nexus API quota with a small safety margin. */
+const RATE_LIMIT_PER_SEC = 25;
 
-  // We create the Nexus instance lazily via `Nexus.create` so the API key is
-  // validated once before the first real call.
+/** GraphQL page size for `listAllMods`. */
+const GRAPHQL_PAGE_SIZE = 100;
+
+/** Default page size for collection-listing GraphQL calls. */
+const COLLECTION_LIST_PAGE_SIZE = 100;
+
+/**
+ * The Nexus SDK's type surface in v1.6.0 is incomplete: `getModFiles` results
+ * include `file_name` / `category_name` that aren't declared, and the
+ * collection GraphQL methods aren't on the typed interface at all. We cast
+ * once at the boundary so consumer code can stay strictly-typed.
+ */
+interface IRawNexusFile {
+  file_id: number;
+  name: string;
+  uploaded_timestamp: number;
+  file_name?: string;
+  category_name?: string;
+  content_preview_link?: string;
+}
+
+interface IRawNexusCollectionListItem {
+  slug?: string;
+  name?: string;
+}
+
+interface IRawNexusCollectionDetail {
+  currentRevision?: { modFiles?: Array<{ file?: { modId?: number; name?: string } }> };
+}
+
+interface INexusGraphQL {
+  getCollectionListGraph(
+    query: object,
+    gameDomain: string,
+    count: number,
+    offset: number,
+  ): Promise<IRawNexusCollectionListItem[]>;
+  getCollectionGraph(
+    query: object,
+    slug: string,
+    adult: boolean,
+  ): Promise<IRawNexusCollectionDetail>;
+}
+
+interface IListAllModsResponse {
+  data?: {
+    mods?: { totalCount?: number; nodes?: Array<{ modId: number; name: string }> };
+  };
+  errors?: Array<{ message: string }>;
+}
+
+export function createNexusClient(apiKey: string): INexusClient {
+  const limiter = new RateLimiter({ tokensPerInterval: RATE_LIMIT_PER_SEC, interval: "second" });
+
   let nexusPromise: Promise<Nexus> | undefined;
 
   function getNexus(): Promise<Nexus> {
@@ -75,28 +123,20 @@ export function createNexusClient(apiKey: string): INexusClient {
   }
 
   return {
-    // ------------------------------------------------------------------
-    // listMostPopular – uses getTrending (sorted by endorsements/popularity)
-    // ------------------------------------------------------------------
+    // getTrending sorts by endorsements/popularity.
     async listMostPopular(gameDomain: string, limit: number): Promise<INexusModSummary[]> {
       const results = await call((nexus) => nexus.getTrending(gameDomain));
       return results.slice(0, limit).map((m) => ({ modId: m.mod_id, name: m.name ?? "" }));
     },
 
-    // ------------------------------------------------------------------
-    // listMostRecent – uses getLatestAdded
-    // ------------------------------------------------------------------
     async listMostRecent(gameDomain: string, limit: number): Promise<INexusModSummary[]> {
       const results = await call((nexus) => nexus.getLatestAdded(gameDomain));
       return results.slice(0, limit).map((m) => ({ modId: m.mod_id, name: m.name ?? "" }));
     },
 
-    // ------------------------------------------------------------------
-    // listOldest – the REST API has no "oldest" sort; we approximate with
-    // getLatestUpdated (sorted ascending by update time) and then reverse
-    // so the least-recently-updated (i.e. oldest untouched) mods come first.
+    // The REST API has no "oldest" sort; getLatestUpdated returns ascending by
+    // update time, so reversing puts the least-recently-updated mods first.
     // This is the closest approximation available in @nexusmods/nexus-api v1.6.0.
-    // ------------------------------------------------------------------
     async listOldest(gameDomain: string, limit: number): Promise<INexusModSummary[]> {
       const results = await call((nexus) => nexus.getLatestUpdated(gameDomain));
       return results
@@ -106,17 +146,11 @@ export function createNexusClient(apiKey: string): INexusClient {
         .map((m) => ({ modId: m.mod_id, name: m.name ?? "" }));
     },
 
-    // ------------------------------------------------------------------
-    // listAllMods – paginated GraphQL `mods(filter: gameDomainName)` query.
-    // Returns every mod for the game.
-    // ------------------------------------------------------------------
+    // The SDK doesn't expose raw GraphQL on the typed surface, so hit
+    // /v2/graphql directly. Wrapped in withRetry to match call()'s protection.
     async listAllMods(gameDomain: string): Promise<INexusModSummary[]> {
-      const pageSize = 100;
       const out: INexusModSummary[] = [];
       let offset = 0;
-      // The SDK doesn't expose a raw GraphQL request method on the typed
-      // surface, so we hit /v2/graphql directly. Wrapped in withRetry to
-      // match the protection the SDK-routed calls get via `call()`.
       while (true) {
         const data = await withRetry(async () => {
           await limiter.removeTokens(1);
@@ -132,7 +166,7 @@ export function createNexusClient(apiKey: string): INexusClient {
                 " mods(filter: { filter: [{ gameDomainName: { value: $domain, op: EQUALS } }] }, count: $count, offset: $offset) {" +
                 "   totalCount nodes { modId name }" +
                 " } }",
-              variables: { domain: gameDomain, count: pageSize, offset },
+              variables: { domain: gameDomain, count: GRAPHQL_PAGE_SIZE, offset },
             }),
           });
           if (!resp.ok) {
@@ -142,15 +176,10 @@ export function createNexusClient(apiKey: string): INexusClient {
             });
             throw err;
           }
-          const json = (await resp.json()) as {
-            data?: {
-              mods?: { totalCount?: number; nodes?: Array<{ modId: number; name: string }> };
-            };
-            errors?: Array<{ message: string }>;
-          };
+          const json = (await resp.json()) as IListAllModsResponse;
           if (json.errors?.length) {
-            // GraphQL semantic errors arrive over a 200 response; tag with
-            // a non-retryable status so withRetry fails fast.
+            // GraphQL semantic errors arrive over 200; tag non-retryable so
+            // withRetry fails fast.
             const err = Object.assign(
               new Error(`listAllMods GraphQL: ${json.errors.map((e) => e.message).join("; ")}`),
               { status: 400 },
@@ -169,31 +198,26 @@ export function createNexusClient(apiKey: string): INexusClient {
       return out;
     },
 
-    // ------------------------------------------------------------------
-    // listCollections – uses getCollectionListGraph with a minimal query
-    // ------------------------------------------------------------------
     async listCollections(gameDomain: string): Promise<INexusCollectionSummary[]> {
-      // The GraphQL method requires a query-shape object describing which
-      // fields to return. We request only `slug` and `name`.
       const query = { slug: true, name: true };
       const results = await call((nexus) =>
-        (nexus as any).getCollectionListGraph(query, gameDomain, 100, 0),
+        (nexus as unknown as INexusGraphQL).getCollectionListGraph(
+          query,
+          gameDomain,
+          COLLECTION_LIST_PAGE_SIZE,
+          0,
+        ),
       );
-      return (results as Array<{ slug?: string; name?: string }>).map((c) => ({
+      return results.map((c) => ({
         slug: c.slug ?? "",
         name: c.name ?? "",
       }));
     },
 
-    // ------------------------------------------------------------------
-    // listCollectionMods – fetches a single collection's current revision
-    // and extracts its mod list.
-    // ------------------------------------------------------------------
     async listCollectionMods(
       gameDomain: string,
       collectionSlug: string,
     ): Promise<INexusModSummary[]> {
-      // Fetch the collection; request the modFiles sub-tree.
       const query = {
         slug: true,
         name: true,
@@ -207,12 +231,10 @@ export function createNexusClient(apiKey: string): INexusClient {
         },
       };
       const collection = await call((nexus) =>
-        (nexus as any).getCollectionGraph(query, collectionSlug, false),
+        (nexus as unknown as INexusGraphQL).getCollectionGraph(query, collectionSlug, false),
       );
 
-      type RevisionMod = { file?: { modId?: number; name?: string } };
-      const modFiles: RevisionMod[] = (collection as any)?.currentRevision?.modFiles ?? [];
-
+      const modFiles = collection.currentRevision?.modFiles ?? [];
       return modFiles
         .filter((mf) => mf.file?.modId != null)
         .map((mf) => ({
@@ -221,16 +243,13 @@ export function createNexusClient(apiKey: string): INexusClient {
         }));
     },
 
-    // ------------------------------------------------------------------
-    // listModFiles – uses getModFiles
-    // ------------------------------------------------------------------
     async listModFiles(gameDomain: string, modId: number): Promise<INexusFileSummary[]> {
       const result = await call((nexus) => nexus.getModFiles(modId, gameDomain));
-      return result.files.map((f) => ({
+      return (result.files as unknown as IRawNexusFile[]).map((f) => ({
         fileId: f.file_id,
         name: f.name,
-        fileName: (f as any).file_name ?? "",
-        categoryName: (f as any).category_name ?? "",
+        fileName: f.file_name ?? "",
+        categoryName: f.category_name ?? "",
         uploadedAt: new Date(f.uploaded_timestamp * 1000),
         contentPreviewLink: f.content_preview_link ?? "",
       }));
