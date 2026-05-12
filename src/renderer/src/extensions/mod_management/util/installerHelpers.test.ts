@@ -10,11 +10,11 @@ import {
   matchesAnyStopPattern,
 } from "./installerHelpers";
 
-vi.mock("../extensions/gamemode_management/util/getGame", () => ({
+vi.mock("../../gamemode_management/util/getGame", () => ({
   getGame: vi.fn(),
 }));
 
-import { getGame } from "../extensions/gamemode_management/util/getGame";
+import { getGame } from "../../gamemode_management/util/getGame";
 
 describe("findCommonRootDir", () => {
   test("undefined for empty list", () => {

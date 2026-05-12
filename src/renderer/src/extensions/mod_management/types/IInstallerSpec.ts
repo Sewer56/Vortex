@@ -4,7 +4,7 @@
  * `testSupported` / `install` pairs and calls `registerInstaller` for each row.
  */
 
-import type { IInstallResult } from "../extensions/mod_management/types/IInstallResult";
+import type { IInstallResult } from "./IInstallResult";
 
 /**
  * `extensions`/`regex`/`filename` matches support two evaluation modes:

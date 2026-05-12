@@ -1,11 +1,10 @@
 import * as path from "path";
 
-import { getGame } from "../extensions/gamemode_management/util/getGame";
-import type { IInstallResult } from "../extensions/mod_management/types/IInstallResult";
-import type { IInstruction } from "../extensions/mod_management/types/IInstallResult";
-import type { TestSupported } from "../extensions/mod_management/types/TestSupported";
-import type { IExtensionContext } from "../types/IExtensionContext";
+import type { IExtensionContext } from "../../../types/IExtensionContext";
+import { getGame } from "../../gamemode_management/util/getGame";
 import type { IInstallerMatch, IInstallerSpec } from "../types/IInstallerSpec";
+import type { IInstallResult, IInstruction } from "../types/IInstallResult";
+import type { TestSupported } from "../types/TestSupported";
 
 /**
  * Returns the single top-level directory that contains every entry in `files`,
