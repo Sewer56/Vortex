@@ -84,12 +84,6 @@ import { copyFileAtomic, writeFileAtomic } from "./fsAtomic";
 import getNormalizeFunc, { makeNormalizingDict } from "./getNormalizeFunc";
 export type { Normalize } from "./getNormalizeFunc.ts";
 import LazyComponent from "../controls/LazyComponent";
-import ReduxProp from "../ReduxProp";
-import { getReduxLog } from "../store/reduxLogger";
-import getVortexPath from "./getVortexPath";
-import github from "./github";
-import type { TFunction } from "./i18n";
-import { getCurrentLanguage } from "./i18n";
 import {
   buildCopyInstructions,
   compileStopPatterns,
@@ -97,7 +91,13 @@ import {
   findCommonRootDir,
   makeInstallerFromSpec,
   matchesAnyStopPattern,
-} from "./installerHelpers";
+} from "../extensions/mod_management/util/installerHelpers";
+import ReduxProp from "../ReduxProp";
+import { getReduxLog } from "../store/reduxLogger";
+import getVortexPath from "./getVortexPath";
+import github from "./github";
+import type { TFunction } from "./i18n";
+import { getCurrentLanguage } from "./i18n";
 import lazyRequire from "./lazyRequire";
 import local from "./local";
 import makeReactive from "./makeReactive";

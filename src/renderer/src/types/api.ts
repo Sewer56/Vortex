@@ -8,7 +8,7 @@ export * from "./IDialog";
 export * from "./IExtensionContext";
 export * from "./IGame";
 export * from "./IHealthCheck";
-export * from "./IInstallerSpec";
+export * from "../extensions/mod_management/types/IInstallerSpec";
 export * from "./IModifiers";
 export * from "./INotification";
 export * from "./IState";
