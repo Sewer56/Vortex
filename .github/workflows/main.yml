@@ -8,12 +8,13 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && github.run_id || 'shared' }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 
 jobs:
   build:
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
 
@@ -36,6 +37,10 @@ jobs:
         with:
           cache: true
 
+      - name: Fix pnpm node-gyp permissions
+        if: runner.os == 'Linux'
+        run: find "$PNPM_HOME" -path '*/node-gyp/gyp/gyp_main.py' -exec chmod +x {} \;
+
       # NOTE(erri120): fontconfig required by font-scanner required by theme-switcher
       - name: Install fontconfig
         if: runner.os == 'Linux'
@@ -43,9 +48,17 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install
+        env:
+          VORTEX_DEFER_ELECTRON_REBUILD: "1"
 
-      - name: Build
-        run: pnpm run build
+      - name: Rebuild Electron native modules
+        run: pnpm --filter @vortex/main exec electron-rebuild
+
+      - name: Build, lint, and typecheck all projects
+        run: pnpm exec nx run-many -t build lint typecheck
+
+      - name: Assets
+        run: pnpm run assets
 
       - name: Test
         run: pnpm run test
