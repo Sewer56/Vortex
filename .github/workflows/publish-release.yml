@@ -1,0 +1,113 @@
+name: Publish Release to Nexus Mods
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: "Dry run? (validate release without uploading)"
+        type: boolean
+        default: true
+      mod-slug:
+        description: "Nexus game domain slug (e.g. 'site' for site mods)"
+        type: string
+        default: "site"
+      file-group-id:
+        description: "Nexus file group ID (5293 = live Vortex, override for test)"
+        type: string
+        default: "5293"
+
+concurrency:
+  group: publish-nexus
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch latest GitHub release
+        id: release
+        run: |
+          RELEASE=$(gh release view --json tagName,name,body,assets,isDraft,isPrerelease)
+          echo "json=$RELEASE" >> "$GITHUB_OUTPUT"
+          TAG_NAME=$(echo "$RELEASE" | jq -r '.tagName')
+          BODY=$(echo "$RELEASE" | jq -r '.body')
+          IS_DRAFT=$(echo "$RELEASE" | jq -r '.isDraft')
+          IS_PRERELEASE=$(echo "$RELEASE" | jq -r '.isPrerelease')
+          echo "tag=$TAG_NAME" >> "$GITHUB_OUTPUT"
+          echo "is_draft=$IS_DRAFT" >> "$GITHUB_OUTPUT"
+          echo "is_prerelease=$IS_PRERELEASE" >> "$GITHUB_OUTPUT"
+          # Multiline output requires heredoc syntax; single-line echo would truncate at newlines.
+          {
+            echo "body<<EOF"
+            echo "$BODY"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Validate release is stable
+        run: |
+          TAG="${{ steps.release.outputs.tag }}"
+          IS_DRAFT="${{ steps.release.outputs.is_draft }}"
+          IS_PRERELEASE="${{ steps.release.outputs.is_prerelease }}"
+          if [ "$IS_DRAFT" = "true" ]; then
+            echo "::error::Latest release ($TAG) is a draft. Only stable releases can be published."
+            exit 1
+          fi
+          if [ "$IS_PRERELEASE" = "true" ]; then
+            echo "::error::Latest release ($TAG) is a prerelease. Only stable releases can be published."
+            exit 1
+          fi
+          echo "✅ Release $TAG is stable and ready to publish"
+
+      - name: Download installer asset
+        id: installer
+        run: |
+          RELEASE="${{ steps.release.outputs.json }}"
+          # Select the first asset whose name ends with .exe — the installer binary.
+          EXE_NAME=$(echo "$RELEASE" | jq -r '([.assets[] | select(.name | test("\\.exe$")) | .name][0] // "")')
+          if [ -z "$EXE_NAME" ]; then
+            echo "::error::No .exe installer asset found in the latest release"
+            exit 1
+          fi
+          gh release download "${{ steps.release.outputs.tag }}" --pattern "$EXE_NAME" --dir ./release-assets
+          echo "path=./release-assets/$EXE_NAME" >> "$GITHUB_OUTPUT"
+          echo "name=$EXE_NAME" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          TAG="${{ steps.release.outputs.tag }}"
+          VERSION="${TAG#v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Version: $VERSION (from tag $TAG)"
+
+      - name: Dry-run summary
+        if: ${{ inputs.dry-run }}
+        run: |
+          echo "===== DRY RUN — no upload will be performed ====="
+          echo "Tag:         ${{ steps.release.outputs.tag }}"
+          echo "Version:     ${{ steps.version.outputs.version }}"
+          echo "Installer:   ${{ steps.installer.outputs.name }}"
+          echo "Mod slug:    ${{ inputs.mod-slug }}"
+          echo "File group:   ${{ inputs.file-group-id }}"
+          echo "================================================="
+
+      - name: Upload to Nexus Mods
+        if: ${{ !inputs.dry-run }}
+        uses: Nexus-Mods/upload-action@a4986292d2f0b499bb9b24b3b25dec5f463b64a5
+        with:
+          api_key: ${{ secrets.NEXUS_API_KEY }}
+          domain: ${{ inputs.mod-slug }}
+          file_group_id: ${{ inputs.file-group-id }}
+          filename: ${{ steps.installer.outputs.path }}
+          version: ${{ steps.version.outputs.version }}
+          display_name: Vortex ${{ steps.version.outputs.version }}
+          description: ${{ steps.release.outputs.body }}
+          file_category: main
+          archive_existing_file: false
