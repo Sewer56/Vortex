@@ -122,31 +122,6 @@ runs:
           ~/.cache/node-gyp
         key: package-native-headers-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package.json', 'pnpm-lock.yaml', 'src/main/package.json') }}
 
-    - name: Cache workspace Electron native rebuild outputs
-      id: workspace-native-cache
-      uses: actions/cache@v4
-      with:
-        path: |
-          node_modules/.pnpm/@nexusmods+fomod-installer-native@*/node_modules/@nexusmods/fomod-installer-native/build
-          node_modules/.pnpm/@nexusmods+fomod-installer-native@*/node_modules/@nexusmods/fomod-installer-native/bin
-          node_modules/.pnpm/drivelist@*/node_modules/drivelist/build
-          node_modules/.pnpm/drivelist@*/node_modules/drivelist/bin
-          node_modules/.pnpm/leveldown@*/node_modules/leveldown/build
-          node_modules/.pnpm/leveldown@*/node_modules/leveldown/bin
-          node_modules/.pnpm/winapi-bindings@*/node_modules/winapi-bindings/build
-          node_modules/.pnpm/winapi-bindings@*/node_modules/winapi-bindings/bin
-          node_modules/.pnpm/xxhash-addon@*/node_modules/xxhash-addon/build
-          node_modules/.pnpm/xxhash-addon@*/node_modules/xxhash-addon/bin
-          node_modules/.pnpm/@parcel+watcher@*/node_modules/@parcel/watcher/build
-          node_modules/.pnpm/@parcel+watcher@*/node_modules/@parcel/watcher/bin
-        key: package-workspace-electron-native-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('pnpm-lock.yaml', 'pnpm-workspace.yaml', 'src/main/package.json', 'src/main/postinstall.mjs') }}
-
-    - name: Rebuild workspace Electron native modules
-      shell: pwsh
-      run: |
-        Write-Output "Workspace Electron native cache hit: ${{ steps.workspace-native-cache.outputs.cache-hit }}"
-        pnpm --filter @vortex/main exec electron-rebuild
-
     - name: Build workspace
       shell: pwsh
       env:
