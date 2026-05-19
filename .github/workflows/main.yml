@@ -13,6 +13,8 @@ concurrency:
 
 jobs:
   build:
+    env:
+      NX_DAEMON: false
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest]
@@ -47,6 +49,19 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install
+
+      - name: Cache Nx task outputs
+        id: nx-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            .nx/cache
+            .nx/workspace-data
+          key: nx-${{ runner.os }}-${{ runner.arch }}-${{ github.workflow }}-${{ github.sha }}
+
+      - name: Show Nx cache status
+        run: |
+          echo "Nx cache hit: ${{ steps.nx-cache.outputs.cache-hit }}"
 
       - name: Build
         run: pnpm run build

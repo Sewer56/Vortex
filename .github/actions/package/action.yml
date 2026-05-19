@@ -112,8 +112,24 @@ runs:
       shell: pwsh
       run: pnpm install --frozen-lockfile
 
+    - name: Cache Nx task outputs
+      id: nx-cache
+      uses: actions/cache@v4
+      with:
+        path: |
+          .nx/cache
+          .nx/workspace-data
+        key: nx-${{ runner.os }}-${{ runner.arch }}-${{ github.workflow }}-${{ github.sha }}
+
+    - name: Show Nx cache status
+      shell: bash
+      run: |
+        echo "Nx cache hit: ${{ steps.nx-cache.outputs.cache-hit }}"
+
     - name: Build Installer
       shell: pwsh
+      env:
+        NX_DAEMON: false
       run: |
         $signingAvailable = -not [string]::IsNullOrWhiteSpace($env:ES_USERNAME)
         $wantSigning = "${{ inputs.use-codesigning }}" -eq "true" -or "${{ steps.nightly-flag.outputs.is_nightly }}" -eq "true"
