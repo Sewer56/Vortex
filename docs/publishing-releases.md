@@ -89,6 +89,24 @@ The `file-group-id` input controls which Nexus Mods page receives the upload:
   valid and has not expired. Check the workflow run logs for the upload-action
   error details.
 
+## Local Testing and Dry-Run
+
+Run the publish preparation script (`scripts/publish-release-to-nexus/index.ts`)
+locally without a GitHub Actions environment—either to run its unit test suite or
+to dry-run the preparation step:
+
+```bash
+# Run the test suite
+pnpm run test -- scripts/publish-release-to-nexus/prepare.test.ts
+
+# Dry-run the preparation script (requires gh CLI with repo auth)
+pnpm tsx scripts/publish-release-to-nexus/index.ts \
+  --dry-run true --mod-slug site --file-group-id 5293
+```
+
+Note: the dry-run command requires the `gh` CLI authenticated with repo scope.
+Without auth, the script will fail when calling `gh release view`.
+
 ## Advanced: Archive Behavior
 
 The `archive_existing_file` option is `false`. The workflow **replaces the
